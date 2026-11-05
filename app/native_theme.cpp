@@ -32,6 +32,10 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#if defined(_MSC_VER)
+#pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "dwmapi.lib")
+#endif
 #endif
 
 namespace edgeecho::ui {

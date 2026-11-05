@@ -1559,7 +1559,32 @@ class MainWindow final : public QMainWindow {
 };
 } // namespace
 
+#if defined(_WIN32)
+#include <io.h>
+#include <fcntl.h>
+static void initWindowsConsoleOutput() {
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut != INVALID_HANDLE_VALUE && hOut != nullptr) {
+        int fd = _open_osfhandle(reinterpret_cast<intptr_t>(hOut), _O_TEXT);
+        if (fd != -1) {
+            FILE *fp = _fdopen(fd, "w");
+            if (fp) {
+                *stdout = *fp;
+                setvbuf(stdout, nullptr, _IONBF, 0);
+            }
+        }
+    } else if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        FILE *dummy = nullptr;
+        freopen_s(&dummy, "CONOUT$", "w", stdout);
+        freopen_s(&dummy, "CONOUT$", "w", stderr);
+    }
+}
+#endif
+
 int main(int argc, char **argv) {
+#if defined(_WIN32)
+    initWindowsConsoleOutput();
+#endif
     if (argc == 2 && std::string(argv[1]) == "--version") {
         std::cout << "EdgeEcho " << edgeecho::version() << " " << edgeecho::build_id() << '\n'; return 0;
     }

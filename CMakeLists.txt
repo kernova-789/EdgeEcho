@@ -104,6 +104,7 @@ if(EDGEECHO_BUILD_GUI)
     if(WIN32)
         # Qt supplies the native GUI entry point; console CLI keeps its own wmain.
         set_target_properties(edgeecho PROPERTIES WIN32_EXECUTABLE TRUE)
+        target_link_libraries(edgeecho PRIVATE advapi32 dwmapi)
     endif()
     install(TARGETS edgeecho RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
