@@ -1,40 +1,40 @@
 {
-  "started_at_utc": "2026-11-05T08:51:35.627346+00:00",
+  "started_at_utc": "2026-11-05T09:23:40.238712+00:00",
   "scope": "Current-source validation; each profile records its own execution boundary",
-  "source_build_id": "source-sha256:70dec836b7fd0dfa184f90dfd82627745ffb250e6ab4b7f625d0fef179f230ee",
-  "version": "0.4.0",
+  "source_build_id": "source-sha256:a53c094868d9364211655a88d815d05e86b3e30db67e7921d069fdaaacc0c0e2",
+  "version": "0.5.0",
   "host": {
     "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.39",
     "machine": "x86_64"
   },
   "source_sha256": {
-    ".github/workflows/build.yml": "523e9a75af792251c6adc3371f7e4d6bd7ea89cfa40c76c82b154f305cc8eb13",
-    "CMakeLists.txt": "536e52556652f492f98b092575c5189f1b38016a4c7bc3e0ff747655f671aec1",
-    "app/interaction_tests.hpp": "97a4f4d2098ed5fed6104c100c761a8aff8e0a526f80b4949bde13455c36a778",
-    "app/main.cpp": "c32e73a188a87d29c026f7afe4c178e170d46227d0e5dbe98c1d389fabc3392e",
+    ".github/workflows/build.yml": "10a7a2308d473e47bf67f8079eef9c55e0032fb7aaf94e2b6980e2035edb8a08",
+    "CMakeLists.txt": "e6b2cfc7b794c60a55296c03c54a5f805bb4bcc108c3bd794811652469c8cc2f",
+    "app/interaction_tests.hpp": "b148e3bf9b7cb04ddd0ad4deef6d45eb95444c14c94b95616c338ff4554ade6b",
+    "app/main.cpp": "9a1fc1a14fed185a26567f624ecb1a990ab31be8e9a432376d3a60998f7c4ad0",
     "app/native_theme.cpp": "2b6d0bb18ed64b68281e5756e4a2b5d6c6dca74bf9df6c2cfe890edb0cc966bb",
     "app/native_theme.hpp": "b3deb8fb9ba6a8595eb54b0fcbf0a5b2ae3c5c6aa22b256e69b6958010a00c2d",
-    "app/plot_widget.cpp": "40bb481673b3951a69f23b549bebeb7cbd00d3ba645ab122ecb7449a945d1bf2",
-    "app/plot_widget.hpp": "7ae7a1c80d8f51932b8fdfbb4c855dfb6ef2760836e8dd90db7bd333d0b0fdc6",
+    "app/plot_widget.cpp": "46060f65cd828545cf4d0e20b6977ebab31705452ed439c49a3ab8eaf5fbde27",
+    "app/plot_widget.hpp": "33231b39e079f83d9969c134ab093f2b49d4a538a67c67a320c4140666307a0e",
     "app/time_range_editor.cpp": "b4b8dc324b449678136e9606afdbb78cb0b928f90f8e1d6beb6aeb208eef7254",
     "app/time_range_editor.hpp": "fa8acf80c4890ec2729aeeef8b1974d57ca3f5ce97ab26b2c9d242446cca9acb",
     "cmake/CreateDemo.cmake": "2c6640319f357c69362f02812ef6afebbd818877341d676385779e16751c2bd1",
     "cmake/mingw-x86_64.cmake": "f72d106e52fa36c9c86fcc66e4655697586a9d0de76cee9277802f0520b59973",
-    "include/edgeecho/core.hpp": "e471e595cdbed15717a9f1d99e5d14f96073a5eb3427d3ff6e13e994ab08a02f",
+    "include/edgeecho/core.hpp": "1ef80a3e8b38fa0669e46057242b99edc3dc319794eadb21562980c3971630ed",
     "src/atomic_output.cpp": "d7de1ad13988b88818fb78c46655bbf46ec5cc4a03bea8c02ea747c91ec44c0e",
     "src/atomic_output.hpp": "9d522cea3eaa62f8aa2ad6baf21afa9ddbea54a9e6aedb06c3ede24eb764b826",
-    "src/audio.cpp": "bac9d1e87b49632fc3ca23b9b57be63024a41474493d6c0de379a1ed565aca2d",
+    "src/audio.cpp": "d9b9ac77b8c5d7f3a747db5ead23d386964a8b2ba93bee2ee0a06dc21f9cc4f8",
     "src/build_info.cpp": "5fe4fdce456b29f2c30b09e496fc26dd9d7518975990bd86d7f49e642fc5352a",
     "src/build_metadata.hpp.in": "b97d9ff49a2180996f050f75bbb6d41116cb10cfb54ecb9417142684e190af07",
-    "src/codec.cpp": "0fea94ef4796f1d2d63a5ce7125176fb2545c1a76f444babd7c2e6abad0e35b9",
-    "src/database.cpp": "94ad9fa5d98e8e2b6926548f5d53d430367aa4a88b5b8b4fb4b33540987eb216",
+    "src/codec.cpp": "c781fb37bde165829a53a5ce3ca1c3dcadc44f1726c5aa10690a6ddb686da3b0",
+    "src/database.cpp": "5972cfd449c3d3e32b47af9b21f8edd34f9915d7f14f2cca44cc964fe5110178",
     "src/demo.cpp": "f7837a4d3f9ea0ccd985428ed30915914464d0d1f0017eae937ee0a2dcd96790",
     "src/demo_schema.hpp": "6626b34b29d50670607f3697fd02fbc2352683eeadd5a2a9be92229357d68685",
     "src/playback.cpp": "02d7722b07c6309a00f3c276247f27f99aec82c0c342df3c1f5707ebc19a2efc",
     "src/source_identity.cpp": "1126b682e4460c0874c75c68ca4a85ed37151939350165ad606d5f08d91fc84b",
     "src/source_identity.hpp": "59843224ff78e989523a465ca4a00e486e58e2b56beff0d7df92565cb23cd775",
     "tests/browsing_tests.cpp": "f71819b8391dec9641ca56d35417d33e1b2dfdce5e2f5e4c8faf1c544582405c",
-    "tests/codec_playback.cpp": "6a3d09dc3e9c395f1c00f53e6c5b37aeab402fb4e975d7948cb1366b4d45ec41",
+    "tests/codec_playback.cpp": "15e987b329ff54f7f4add4677fb71bc8139ed6d87b5799eeaad1bd7eff4088b4",
     "tests/compatibility/generate.cpp": "55023c425b6bd7e2154e0221d2e69969d4da8399dbf0b18de3db00786ab17e24",
     "tests/compatibility/validate.py": "f79339a22bbf5b6033faaad43d812de62cbc92903450ed37cfef3f7a258338cb",
     "tests/database_tests.cpp": "ada9b5db984f0dfc98cff980a30d05fcaaddc622b354b0b332fc72c4557e6b56",
@@ -50,7 +50,7 @@
     "third_party/sqlite/sqlite3.h": "d6c84557261893439b341d2e6c35187ae3ea24fbfd843ad94616f72d89242b8c",
     "tools/build.ps1": "6ee425d7d503d19d5d696c3a7938ddc65ed650bfe75d3c53be1a83fc5ff15350",
     "tools/build.sh": "aa2d6ea3dfb4892549cd3eed0b79e331d8563d0183e2d14aa3dcb5e78c6da193",
-    "tools/cli.cpp": "eeb608a57cf2d2704d938b9faabf9351d2769389198294e21e77722cd37038ae",
+    "tools/cli.cpp": "616c114a13477469ce6df89a0f5a05cf4a9e395cb1c77b6d487078d1c451fc69",
     "tools/package_linux.py": "b0970016bb4f84e89fcde836861d03bad8cfa5043cff69043144a23f4255cda3",
     "tools/package_windows.ps1": "604e0a04593df5421b0b32f50f05f791edc885243025c881986f97f8d2cf7393",
     "tools/run.sh": "802fe20a4c1acf1bace46f320cd39a81e3c8629a2f035e724998f004659c08ae",
@@ -78,8 +78,8 @@
             "-DCMAKE_INCLUDE_PATH=/home/u-yoimiya/文档/EdgeEcho/.deps/qt/usr/include"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 0.5084169670008123,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/release/configure.log"
+          "elapsed_seconds": 1.0039650990001974,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/release/configure.log"
         },
         {
           "command": [
@@ -92,8 +92,8 @@
             "4"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 21.240884349001135,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/release/build.log"
+          "elapsed_seconds": 8.582433913001296,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/release/build.log"
         },
         {
           "command": [
@@ -105,8 +105,8 @@
             "--show-only=json-v1"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 0.026153083999815863,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/release/inventory.log"
+          "elapsed_seconds": 0.02087197500077309,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/release/inventory.log"
         },
         {
           "command": [
@@ -117,11 +117,11 @@
             "Release",
             "--output-on-failure",
             "--output-junit",
-            "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/release/ctest-junit.xml"
+            "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/release/ctest-junit.xml"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 48.517289846000494,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/release/ctest.log"
+          "elapsed_seconds": 40.15184589400087,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/release/ctest.log"
         },
         {
           "command": [
@@ -129,8 +129,8 @@
             "--version"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 0.005374226999265375,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/release/edgeecho_cli-version.log"
+          "elapsed_seconds": 0.00573051599712926,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/release/edgeecho_cli-version.log"
         },
         {
           "command": [
@@ -138,8 +138,8 @@
             "--version"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 0.015426983998622745,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/release/edgeecho-version.log"
+          "elapsed_seconds": 0.02034789599929354,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/release/edgeecho-version.log"
         }
       ],
       "tests": {
@@ -164,18 +164,18 @@
       },
       "identities": {
         "edgeecho_cli": {
-          "version": "0.4.0",
-          "build_id": "source-sha256:70dec836b7fd0dfa184f90dfd82627745ffb250e6ab4b7f625d0fef179f230ee"
+          "version": "0.5.0",
+          "build_id": "source-sha256:a53c094868d9364211655a88d815d05e86b3e30db67e7921d069fdaaacc0c0e2"
         },
         "edgeecho": {
-          "version": "0.4.0",
-          "build_id": "source-sha256:70dec836b7fd0dfa184f90dfd82627745ffb250e6ab4b7f625d0fef179f230ee"
+          "version": "0.5.0",
+          "build_id": "source-sha256:a53c094868d9364211655a88d815d05e86b3e30db67e7921d069fdaaacc0c0e2"
         }
       },
       "artifacts": {
         "edgeecho_cli": {
           "path": "/home/u-yoimiya/文档/EdgeEcho/build/edgeecho_cli",
-          "sha256": "40089ce11a619d869175c6385c75c956fa4a988902cc2a16fd65c4ef8c02e98f",
+          "sha256": "a3660529ed47b6b29a7c53bc375ee7d2adcc6d1f809dc82260bf72a61913b7c6",
           "abi": {
             "format": "ELF",
             "bits": 64,
@@ -184,7 +184,7 @@
         },
         "edgeecho": {
           "path": "/home/u-yoimiya/文档/EdgeEcho/build/edgeecho",
-          "sha256": "4c0731646a103db036bc1fe37ef49ccb5dff14f5f69ec82e88cde7a710eb98f4",
+          "sha256": "d93048d7d38f7172017d79305bb6e01339781e853b4f6538a4fe16fb2339501e",
           "abi": {
             "format": "ELF",
             "bits": 64,
@@ -194,7 +194,7 @@
       },
       "runtime_executed": true,
       "scope": "Native Linux Release GUI/core/CLI",
-      "junit": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/release/ctest-junit.xml"
+      "junit": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/release/ctest-junit.xml"
     },
     "asan": {
       "passed": true,
@@ -212,8 +212,8 @@
             "-DEDGEECHO_SANITIZERS=ON"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 0.4073573530004069,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/asan/configure.log"
+          "elapsed_seconds": 0.40649769399897195,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/asan/configure.log"
         },
         {
           "command": [
@@ -226,8 +226,8 @@
             "4"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 2.9960514080012217,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/asan/build.log"
+          "elapsed_seconds": 24.73258261599767,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/asan/build.log"
         },
         {
           "command": [
@@ -239,8 +239,8 @@
             "--show-only=json-v1"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 0.020780721999472007,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/asan/inventory.log"
+          "elapsed_seconds": 0.02791266900021583,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/asan/inventory.log"
         },
         {
           "command": [
@@ -251,11 +251,11 @@
             "Debug",
             "--output-on-failure",
             "--output-junit",
-            "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/asan/ctest-junit.xml"
+            "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/asan/ctest-junit.xml"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 5.258461568002531,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/asan/ctest.log"
+          "elapsed_seconds": 5.681774052001856,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/asan/ctest.log"
         },
         {
           "command": [
@@ -263,8 +263,8 @@
             "--version"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 0.0372896379994927,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/asan/edgeecho_cli-version.log"
+          "elapsed_seconds": 0.04198588199869846,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/asan/edgeecho_cli-version.log"
         }
       ],
       "tests": {
@@ -285,14 +285,14 @@
       },
       "identities": {
         "edgeecho_cli": {
-          "version": "0.4.0",
-          "build_id": "source-sha256:70dec836b7fd0dfa184f90dfd82627745ffb250e6ab4b7f625d0fef179f230ee"
+          "version": "0.5.0",
+          "build_id": "source-sha256:a53c094868d9364211655a88d815d05e86b3e30db67e7921d069fdaaacc0c0e2"
         }
       },
       "artifacts": {
         "edgeecho_cli": {
           "path": "/home/u-yoimiya/文档/EdgeEcho/build-asan/edgeecho_cli",
-          "sha256": "aa0c20fae93355df078964b13859113d3059a708f9a77181e870c22f5d1df10a",
+          "sha256": "1bcbb9837f0d858cf5789b9805b8eda5c148c893b15c8c969d6f3182fbc09c1d",
           "abi": {
             "format": "ELF",
             "bits": 64,
@@ -302,7 +302,7 @@
       },
       "runtime_executed": true,
       "scope": "Native Linux Debug ASan+UBSan core/CLI",
-      "junit": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/asan/ctest-junit.xml"
+      "junit": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/asan/ctest-junit.xml"
     },
     "windows-cross": {
       "passed": true,
@@ -321,8 +321,8 @@
             "-DCMAKE_TOOLCHAIN_FILE=/home/u-yoimiya/文档/EdgeEcho/cmake/mingw-x86_64.cmake"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 0.4319196060023387,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/windows-cross/configure.log"
+          "elapsed_seconds": 0.5793508530005056,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/windows-cross/configure.log"
         },
         {
           "command": [
@@ -335,14 +335,14 @@
             "4"
           ],
           "exit_code": 0,
-          "elapsed_seconds": 2.1208968339997227,
-          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5/windows-cross/build.log"
+          "elapsed_seconds": 29.43542260400136,
+          "log": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3/windows-cross/build.log"
         }
       ],
       "artifacts": {
         "edgeecho_cli": {
           "path": "/home/u-yoimiya/文档/EdgeEcho/build-windows/edgeecho_cli.exe",
-          "sha256": "9d4b0074212f405e7fe190aa75f70453388e8776dee5771083c7cc6960caaf78",
+          "sha256": "da1bf40f2f261f962acd1770f171b90307222b2332cc530313ec08fcd0e175e6",
           "abi": {
             "format": "PE",
             "machine": 34404,
@@ -351,7 +351,7 @@
         },
         "database_tests": {
           "path": "/home/u-yoimiya/文档/EdgeEcho/build-windows/database_tests.exe",
-          "sha256": "34c9cb10c1aeb97da437b80f30760ef3b9a6159e4c5ae36c979c24f278b5d3d4",
+          "sha256": "ac2f2cf86da0ccf68402d0ab938f3c17907e339f3cccb9866fd6fdc3779fd2aa",
           "abi": {
             "format": "PE",
             "machine": 34404,
@@ -360,7 +360,7 @@
         },
         "codec_playback_tests": {
           "path": "/home/u-yoimiya/文档/EdgeEcho/build-windows/codec_playback_tests.exe",
-          "sha256": "66c6e7f0fc6177ae870278fa133e19a66dd6f1a3b8a1e2ca3b59adeca2db6168",
+          "sha256": "8af14c388ac96c345bd14374267a9ccd9930c7f358cdc01c0b09743f84234f92",
           "abi": {
             "format": "PE",
             "machine": 34404,
@@ -369,7 +369,7 @@
         },
         "session_tests": {
           "path": "/home/u-yoimiya/文档/EdgeEcho/build-windows/session_tests.exe",
-          "sha256": "4683bf09286a0953f227e060060bc199b0e164a2e12b7504eb9ed358acd67cdd",
+          "sha256": "87f3be8384c9f896bde9c6d739a378fd5b62b9f8c3baf06c0f0ba192595343d3",
           "abi": {
             "format": "PE",
             "machine": 34404,
@@ -378,7 +378,7 @@
         },
         "export_tests": {
           "path": "/home/u-yoimiya/文档/EdgeEcho/build-windows/export_tests.exe",
-          "sha256": "74a271d7d4ea99795b2256c9ccc7098e67dce9052ec85ac292b8b30873aaceed",
+          "sha256": "f4cbe38f46b1a3ac96ce73795c14946a1071954b2c9b3956beb39de450ac8f0e",
           "abi": {
             "format": "PE",
             "machine": 34404,
@@ -387,7 +387,7 @@
         },
         "browsing_tests": {
           "path": "/home/u-yoimiya/文档/EdgeEcho/build-windows/browsing_tests.exe",
-          "sha256": "c3ea66a303e083de838754d032b753ff64c7be663becd187b305a2d71eb43bf8",
+          "sha256": "fa22a66a5a0c6369df6cc13a7ad5ca8040318b32e73b349d8e1d6f3f65d944ac",
           "abi": {
             "format": "PE",
             "machine": 34404,
@@ -400,7 +400,7 @@
     }
   },
   "passed": true,
-  "run_directory": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T085135Z-a47a27b5",
+  "run_directory": "/home/u-yoimiya/文档/EdgeEcho/build/validation-current/run-20261105T092340Z-4d1946b3",
   "source_unchanged": true,
-  "finished_at_utc": "2026-11-05T08:52:57.410488+00:00"
+  "finished_at_utc": "2026-11-05T09:25:31.219751+00:00"
 }

@@ -534,6 +534,19 @@ AudioClip Database::audio(const Filter &f, Range r, const std::string &channel,
         for (const auto &s : raw) if (!s.is_gap) sum += s.value;
         mean = sum / static_cast<double>(clip.samples_decoded);
     }
+    if (options.low_cut_hz > 0.0 || options.high_cut_hz > 0.0) {
+        std::vector<double> filter_in(raw.size(), 0.0);
+        for (std::size_t idx = 0; idx < raw.size(); ++idx) {
+            filter_in[idx] = raw[idx].is_gap ? 0.0 : (raw[idx].value - mean);
+        }
+        auto filtered = filter_bandpass(filter_in, static_cast<double>(nominal_rate),
+                                        options.low_cut_hz, options.high_cut_hz);
+        for (std::size_t idx = 0; idx < raw.size() && idx < filtered.size(); ++idx) {
+            if (!raw[idx].is_gap)
+                raw[idx].value = filtered[idx];
+        }
+        mean = 0.0;
+    }
     double peak = 0.0;
     for (const auto &s : raw) {
         if (!s.is_gap) peak = std::max(peak, std::abs(s.value - mean));
@@ -631,6 +644,46 @@ Spectrum Database::spectrum(const Filter &f, Range r, const std::string &channel
     }
     if (detected_rate <= 0.0) detected_rate = 1.0;
     auto result = compute_spectrum(samples, detected_rate, max_bins);
+    i.check_source();
+    return result;
+}
+Spectrogram Database::spectrogram(const Filter &f, Range r, const std::string &channel,
+                                  std::size_t time_bins, std::size_t freq_bins) {
+    auto &i = *impl_; i.begin_operation(); validate_range(r);
+    require(!f.sensor.empty() && !f.type.empty() && !f.unit.empty(), "Spectrogram requires an exact sensor/type/unit series");
+    require(!channel.empty() && channel.size() <= 512, "Spectrogram requires a nonempty channel ID");
+    require(time_bins >= 4 && time_bins <= 512 && freq_bins >= 4 && freq_bins <= 512,
+            "Spectrogram bins must be in [4, 512]");
+    std::vector<double> samples;
+    samples.reserve(32768);
+    std::vector<Time> timestamps;
+    timestamps.reserve(1024);
+    double detected_rate = 0.0;
+    std::size_t decoded = 0;
+    i.scan(f, r, [&](const Record &row) {
+        if (row.kind == 0 || row.quality != 0) return;
+        if (row.rate && *row.rate > 0.0 && detected_rate <= 0.0)
+            detected_rate = *row.rate;
+        decode(row, channel, [&](Point point) {
+            require(++decoded <= i.limits.decode_samples, "Spectrogram decoded sample budget exceeded; narrow the time range");
+            if ((decoded & 4095U) == 0) i.check_budget();
+            if (point.gap || !std::isfinite(point.value) || point.timestamp < r.start || point.timestamp >= r.end)
+                return;
+            if (samples.size() < 131072) {
+                samples.push_back(point.value);
+                if (timestamps.size() < 1024)
+                    timestamps.push_back(point.timestamp);
+            }
+        }, i.cancel);
+    });
+    require(samples.size() >= 16, "Spectrogram requires at least 16 valid samples in the selected range");
+    if (detected_rate <= 0.0 && timestamps.size() >= 2) {
+        const Time span = timestamps.back() - timestamps.front();
+        if (span > 0)
+            detected_rate = static_cast<double>(timestamps.size() - 1) * 1000000.0 / static_cast<double>(span);
+    }
+    if (detected_rate <= 0.0) detected_rate = 1.0;
+    auto result = compute_spectrogram(samples, detected_rate, r, time_bins, freq_bins);
     i.check_source();
     return result;
 }

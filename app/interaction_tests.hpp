@@ -243,12 +243,32 @@
                 if(!interactionCheck(audioPlayer_.muted(),QStringLiteral("audio checkbox toggles mute state")))return;
                 audioEnable_->setChecked(true);
                 const int specIdx=viewModeBox_->findData(QStringLiteral("spectrum"));
-                if(specIdx<0){finishInteraction(false,QStringLiteral("spectrum mode option missing"));return;}
+                const int stftIdx=viewModeBox_->findData(QStringLiteral("spectrogram"));
+                const int dualIdx=viewModeBox_->findData(QStringLiteral("dual"));
+                if(specIdx<0||stftIdx<0||dualIdx<0){finishInteraction(false,QStringLiteral("view mode options missing"));return;}
                 viewModeBox_->setCurrentIndex(specIdx);
                 if(!interactionCheck(plot_->isSpectrumMode() && std::abs(plot_->spectrum().dominant_frequency_hz-80.0)<2.0,
                                      QStringLiteral("FFT spectrum view identifies 80 Hz sound tone")))return;
+                viewModeBox_->setCurrentIndex(stftIdx);
+                if(!interactionCheck(plot_->isSpectrogramMode() && std::abs(plot_->spectrogram().dominant_frequency_hz-80.0)<6.0,
+                                     QStringLiteral("STFT waterfall spectrogram view identifies 80 Hz peak")))return;
+                viewModeBox_->setCurrentIndex(dualIdx);
+                if(!interactionCheck(plot_->isDualMode(),
+                                     QStringLiteral("linked dual subplots view combines time waveform and FFT spectrum")))return;
                 viewModeBox_->setCurrentIndex(0);
-                if(!interactionCheck(!plot_->isSpectrumMode(),QStringLiteral("switching back restores time-domain waveform")))return;
+                if(!interactionCheck(!plot_->isSpectrumMode() && !plot_->isSpectrogramMode() && !plot_->isDualMode(),
+                                     QStringLiteral("switching back restores time-domain waveform")))return;
+                const int physIdx=unitModeBox_->findData(QStringLiteral("physical"));
+                const int rawIdx=unitModeBox_->findData(QStringLiteral("raw"));
+                if(physIdx<0||rawIdx<0){finishInteraction(false,QStringLiteral("unit mode selector missing"));return;}
+                unitModeBox_->setCurrentIndex(physIdx);
+                if(!interactionCheck(unitModeBox_->currentData().toString()==QStringLiteral("physical"),
+                                     QStringLiteral("physical engineering unit calibration mode applies")))return;
+                unitModeBox_->setCurrentIndex(rawIdx);
+                speed_->setValue(2.0);
+                if(!interactionCheck(std::abs(audioPlayer_.playback_speed()-2.0)<0.01,
+                                     QStringLiteral("playback speed syncs WSOLA time-stretched audio speed")))return;
+                speed_->setValue(1.0);
                 const int darkIdx=themeBox_->findData(QStringLiteral("dark"));
                 const int lightIdx=themeBox_->findData(QStringLiteral("light"));
                 const int sysIdx=themeBox_->findData(QStringLiteral("system"));

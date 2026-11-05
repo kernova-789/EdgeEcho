@@ -179,6 +179,7 @@ struct Result {
     Plot plot;
     std::vector<Plot> plots;
     std::optional<Spectrum> spectrum;
+    std::optional<Spectrogram> spectrogram;
     std::optional<AudioClip> audioClip;
     QString readout;
     Page page;
@@ -422,13 +423,20 @@ class MainWindow final : public QMainWindow {
         seriesGroupLayout->addWidget(seriesInfo_);
         sideLayout->addWidget(seriesGroup, 1);
 
-        auto *channelGroup = new QGroupBox(QStringLiteral("通道与视图模式"));
+        auto *channelGroup = new QGroupBox(QStringLiteral("通道、量纲与视图模式"));
         auto *channelForm = new QFormLayout(channelGroup);
         channelBox_ = new QComboBox;
         channelForm->addRow(QStringLiteral("数据通道:"), channelBox_);
+        unitModeBox_ = new QComboBox;
+        unitModeBox_->addItem(QStringLiteral("ADC 原始值 (count)"), QStringLiteral("raw"));
+        unitModeBox_->addItem(QStringLiteral("物理工程量纲 (Physical)"), QStringLiteral("physical"));
+        unitModeBox_->setToolTip(QStringLiteral("在原始 ADC 计数值与 mems_driver 标准物理工程量纲 (m/s²、mm/s、°C、dB) 之间切换"));
+        channelForm->addRow(QStringLiteral("量纲模式:"), unitModeBox_);
         viewModeBox_ = new QComboBox;
         viewModeBox_->addItem(QStringLiteral("时域波形 (Waveform)"), QStringLiteral("time"));
         viewModeBox_->addItem(QStringLiteral("FFT 频谱图 (Spectrum)"), QStringLiteral("spectrum"));
+        viewModeBox_->addItem(QStringLiteral("STFT 时频瀑布图 (Spectrogram)"), QStringLiteral("spectrogram"));
+        viewModeBox_->addItem(QStringLiteral("联动双视图：时域 + 频谱 (Dual)"), QStringLiteral("dual"));
         channelForm->addRow(QStringLiteral("图像视图:"), viewModeBox_);
         sideLayout->addWidget(channelGroup);
 
@@ -510,6 +518,15 @@ class MainWindow final : public QMainWindow {
         volumeSlider_->setFixedWidth(90);
         volumeSlider_->setToolTip(QStringLiteral("调节音频回放音量"));
         audioRow->addWidget(volumeSlider_);
+
+        audioRow->addWidget(new QLabel(QStringLiteral("听诊滤波:")));
+        audioFilterBox_ = new QComboBox;
+        audioFilterBox_->addItem(QStringLiteral("全频段原声"), QStringLiteral("none"));
+        audioFilterBox_->addItem(QStringLiteral("高通除噪 (>120 Hz)"), QStringLiteral("hp120"));
+        audioFilterBox_->addItem(QStringLiteral("共振带通 (50–250 Hz)"), QStringLiteral("bp50_250"));
+        audioFilterBox_->addItem(QStringLiteral("低通包络 (<150 Hz)"), QStringLiteral("lp150"));
+        audioFilterBox_->setToolTip(QStringLiteral("零相位二阶 Butterworth 数字滤波听诊模式"));
+        audioRow->addWidget(audioFilterBox_);
 
         playAudioNow_ = new QPushButton(QStringLiteral("试听当前窗口"));
         playAudioNow_->setEnabled(false);
@@ -745,6 +762,12 @@ class MainWindow final : public QMainWindow {
         });
         connect(speed_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double value) {
             clock_.set_speed(value);
+            audioPlayer_.set_playback_speed(std::clamp(value, 0.25, 8.0));
+        });
+        connect(audioFilterBox_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] {
+            if (!validSelection()) return;
+            clearBrowsingCache();
+            loadWindow(true);
         });
         connect(audioEnable_, &QCheckBox::toggled, this, [this](bool checked) {
             audioPlayer_.set_muted(!checked);
@@ -789,6 +812,9 @@ class MainWindow final : public QMainWindow {
         connect(seriesList_, &QListWidget::currentRowChanged, this, [this](int row) { selectSeries(row); });
         connect(channelBox_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] {
             if (!updatingChannels_) loadWindow(true);
+        });
+        connect(unitModeBox_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] {
+            refreshPlotView();
         });
         connect(viewModeBox_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] {
             refreshPlotView();
@@ -959,7 +985,9 @@ class MainWindow final : public QMainWindow {
         if (!active_) busy_->hide();
     }
     void setSessionControls(bool enabled) {
-        seriesList_->setEnabled(enabled); channelBox_->setEnabled(enabled); viewModeBox_->setEnabled(enabled);
+        seriesList_->setEnabled(enabled); channelBox_->setEnabled(enabled);
+        unitModeBox_->setEnabled(enabled); viewModeBox_->setEnabled(enabled);
+        if (audioFilterBox_) audioFilterBox_->setEnabled(enabled);
         timeline_->setEnabled(enabled);
         play_->setEnabled(enabled); pause_->setEnabled(enabled); stop_->setEnabled(enabled);
         fromEdit_->setEnabled(enabled); toEdit_->setEnabled(enabled); seekEdit_->setEnabled(enabled); timeEditor_->setEnabled(enabled);
@@ -972,7 +1000,7 @@ class MainWindow final : public QMainWindow {
     void invalidateSession(const QString &message) {
         clock_.stop(); audioPlayer_.clear(); source_.reset(); exportProgress_.reset(); selected_ = -1; overview_ = {}; path_.clear();
         loaded_.reset(); requested_.reset(); customView_.reset(); page_ = {}; eventRows_.clear();
-        currentTraces_.clear(); currentSpectrum_.reset(); clearBrowsingCache();
+        currentTraces_.clear(); currentSpectrum_.reset(); currentSpectrogram_.reset(); clearBrowsingCache();
         const QSignalBlocker seriesBlock(seriesList_), channelBlock(channelBox_);
         seriesList_->clear(); channelBox_->clear(); records_->setRowCount(0); events_->setRowCount(0);
         details_->clear(); detailPreview_->clear(); seriesInfo_->clear(); plot_->clear(message);
@@ -1082,11 +1110,26 @@ class MainWindow final : public QMainWindow {
         }
         return {};
     }
+    AudioOptions currentAudioOptions() const {
+        AudioOptions opts;
+        if (!audioFilterBox_) return opts;
+        const QString mode = audioFilterBox_->currentData().toString();
+        if (mode == QStringLiteral("hp120")) {
+            opts.low_cut_hz = 120.0;
+        } else if (mode == QStringLiteral("bp50_250")) {
+            opts.low_cut_hz = 50.0;
+            opts.high_cut_hz = 250.0;
+        } else if (mode == QStringLiteral("lp150")) {
+            opts.high_cut_hz = 150.0;
+        }
+        return opts;
+    }
     static std::size_t resultBytes(const Result &r) {
         std::size_t bytes = sizeof(Result);
         for (const auto &p : r.plots) bytes += p.points.capacity() * sizeof(Point);
         bytes += r.plot.points.capacity() * sizeof(Point);
         if (r.spectrum) bytes += r.spectrum->bins.capacity() * sizeof(SpectrumBin);
+        if (r.spectrogram) bytes += r.spectrogram->magnitudes_db.capacity() * sizeof(double);
         if (r.audioClip) bytes += r.audioClip->pcm16.capacity() * sizeof(std::int16_t);
         for (const auto &row : r.page.records) bytes += sizeof(Record) + row.block.capacity() + row.id.size() + row.sensor.size() + row.type.size() + row.unit.size() + row.metadata.size() + row.source.size() + row.batch.size() + row.encoding.size();
         for (const auto &e : r.events) bytes += sizeof(Event) + e.id.size() + e.sensor.size() + e.type.size() + e.event_type.size() + e.description.size();
@@ -1105,7 +1148,8 @@ class MainWindow final : public QMainWindow {
         while (cache_.size() > 3 || cacheBytes_ > maxBytes) { cacheBytes_ -= cache_.back().bytes; cache_.pop_back(); }
     }
     static Result readWindow(const std::filesystem::path &input, const std::optional<SourceIdentity> &expected,
-                             const Filter &f, Range range, const std::vector<std::string> &ids, std::size_t buckets, Cancel cancel) {
+                             const Filter &f, Range range, const std::vector<std::string> &ids, std::size_t buckets,
+                             AudioOptions audioOpts, Cancel cancel) {
         Database db(input, {}, cancel, expected); Result result;
         result.page = db.page(f, range); result.events = db.events(f, range);
         if (ids.empty()) result.warning = QStringLiteral("未知编码：仅显示记录和原始字节，未猜测解码");
@@ -1116,9 +1160,12 @@ class MainWindow final : public QMainWindow {
                 try { result.spectrum = db.spectrum(f, range, ids.front(), 1024); }
                 catch (const SourceChanged &) { throw; }
                 catch (...) {}
+                try { result.spectrogram = db.spectrogram(f, range, ids.front(), 96, 96); }
+                catch (const SourceChanged &) { throw; }
+                catch (...) {}
                 const bool soundOrWave = ids.front() == "sound" || f.type.find("sound") != std::string::npos;
                 if (soundOrWave && range.end - range.start <= 60000000LL) {
-                    try { result.audioClip = db.audio(f, range, ids.front()); }
+                    try { result.audioClip = db.audio(f, range, ids.front(), audioOpts); }
                     catch (const SourceChanged &) { throw; }
                     catch (...) {}
                 }
@@ -1130,12 +1177,51 @@ class MainWindow final : public QMainWindow {
     }
     void refreshPlotView() {
         if (!validSelection() || !loaded_) return;
-        const bool wantSpectrum = viewModeBox_->currentData().toString() == QStringLiteral("spectrum");
-        if (wantSpectrum && currentSpectrum_) {
-            plot_->setSpectrum(*currentSpectrum_, currentUnit_, currentCaption_,
+        const bool wantPhysical = unitModeBox_ && unitModeBox_->currentData().toString() == QStringLiteral("physical");
+        const auto &series = overview_.series[static_cast<std::size_t>(selected_)];
+        std::vector<PlotTrace> displayTraces = currentTraces_;
+        QString displayUnit = currentUnit_;
+        QString note = currentNote_;
+        std::optional<Spectrum> displaySpectrum = currentSpectrum_;
+
+        if (wantPhysical && !displayTraces.empty()) {
+            const auto firstId = utf8(displayTraces.front().label);
+            const auto cal0 = default_calibration(series.encoding, firstId);
+            displayUnit = qs(cal0.physical_unit);
+            if (!cal0.description_zh.empty())
+                note += QStringLiteral(" · 物理标定: ") + qs(cal0.description_zh) + QStringLiteral(" (") + displayUnit + QStringLiteral(")");
+            for (auto &trace : displayTraces) {
+                const auto cal = default_calibration(series.encoding, utf8(trace.label));
+                for (auto &pt : trace.plot.points) {
+                    if (!pt.gap && std::isfinite(pt.value))
+                        pt.value = apply_calibration(pt.value, cal);
+                }
+            }
+            if (displaySpectrum && std::abs(cal0.scale - 1.0) > 1e-12) {
+                const double scale = std::abs(cal0.scale);
+                displaySpectrum->dominant_magnitude *= scale;
+                for (auto &bin : displaySpectrum->bins)
+                    bin.magnitude *= scale;
+            }
+        }
+
+        const QString mode = viewModeBox_->currentData().toString();
+        if (mode == QStringLiteral("spectrum") && displaySpectrum) {
+            plot_->setSpectrum(*displaySpectrum, displayUnit, currentCaption_,
                                QStringLiteral("FFT 频谱视图 · 悬停查看各频点幅值"));
+        } else if (mode == QStringLiteral("spectrogram") && currentSpectrogram_) {
+            plot_->setSpectrogram(*currentSpectrogram_, *loaded_, displayUnit, currentCaption_,
+                                  QStringLiteral("STFT 时频瀑布图 (50% 重叠 Hann 窗) · 悬停查看时频点 dB 能量"));
+            plot_->setPosition(clock_.position());
+        } else if (mode == QStringLiteral("dual") && displaySpectrum) {
+            plot_->setDualView(std::move(displayTraces), *displaySpectrum, *loaded_, displayUnit, currentCaption_,
+                              eventRows_, note);
+            plot_->setPosition(clock_.position());
+            plot_->setReadout(lastExactReadout_.isEmpty()
+                ? QStringLiteral("联动双视图 · 上方时域包络与下方 FFT 频谱同步分析")
+                : lastExactReadout_);
         } else {
-            plot_->setTraces(currentTraces_, *loaded_, currentUnit_, currentCaption_, eventRows_, currentNote_);
+            plot_->setTraces(std::move(displayTraces), *loaded_, displayUnit, currentCaption_, eventRows_, note);
             plot_->setPosition(clock_.position());
             plot_->setReadout(lastExactReadout_.isEmpty()
                 ? QStringLiteral("悬停后读取原始样本；预览包络不是完整样本序列")
@@ -1166,6 +1252,7 @@ class MainWindow final : public QMainWindow {
 
         currentTraces_ = std::move(traces);
         currentSpectrum_ = std::move(result.spectrum);
+        currentSpectrogram_ = std::move(result.spectrogram);
         currentUnit_ = qs(f.unit);
         currentCaption_ = caption;
         currentNote_ = note;
@@ -1173,6 +1260,7 @@ class MainWindow final : public QMainWindow {
         if (result.audioClip && !result.audioClip->pcm16.empty()) {
             audioPlayer_.load(std::move(*result.audioClip));
             audioPlayer_.set_volume(static_cast<double>(volumeSlider_->value()) / 100.0);
+            audioPlayer_.set_playback_speed(std::clamp(speed_->value(), 0.25, 8.0));
             audioPlayer_.set_muted(!audioEnable_->isChecked());
             playAudioNow_->setEnabled(true);
             exportWavAction_->setEnabled(true);
@@ -1201,11 +1289,12 @@ class MainWindow final : public QMainWindow {
         if (!force && requested_) return;
         const auto range = currentWindow(); const auto input = path_; const auto expected = source_; const auto f = filter();
         const auto ids = selectedChannels(); const auto buckets = static_cast<std::size_t>(std::clamp(plot_->width() * 2, 300, 3000));
+        const auto audioOpts = currentAudioOptions();
         const QString caption = qs(f.sensor) + QStringLiteral(" / ") + qs(f.type) + QStringLiteral(" / ") + channelBox_->currentText();
         auto entry = cached(range, ids, buckets); requested_ = range; pendingProbe_.reset(); ++probeSerial_;
-        submit(QStringLiteral("加载当前窗口…"), [input, expected, f, range, ids, buckets, entry](Cancel cancel) {
+        submit(QStringLiteral("加载当前窗口…"), [input, expected, f, range, ids, buckets, audioOpts, entry](Cancel cancel) {
             if (entry) { Database verify(input, {}, cancel, expected); Result result = *entry; (void)verify.identity(); return result; }
-            return readWindow(input, expected, f, range, ids, buckets, cancel);
+            return readWindow(input, expected, f, range, ids, buckets, audioOpts, cancel);
         }, [this, range, ids, buckets, caption, f, hit = static_cast<bool>(entry)](Result result) {
             if (hit) ++cacheHits_; else ++cacheMisses_;
             remember(range, ids, buckets, result); presentWindow(std::move(result), range, ids, caption, f, hit);
@@ -1220,13 +1309,25 @@ class MainWindow final : public QMainWindow {
         const auto input = path_; const auto expected = source_; const auto f = filter(); const auto range = *loaded_; const auto ids = selectedChannels();
         if (pendingProbe_ && !ids.empty()) {
             const Time target = *pendingProbe_; pendingProbe_.reset(); const auto serial = probeSerial_;
-            const bool estimated = overview_.series[static_cast<std::size_t>(selected_)].kind == 2 && overview_.series[static_cast<std::size_t>(selected_)].encoding != "iio-le-72-v1";
-            startBackground(QStringLiteral("精确原始读数"), [input, expected, f, range, ids, target, estimated](Cancel cancel) {
+            const auto &series = overview_.series[static_cast<std::size_t>(selected_)];
+            const bool estimated = series.kind == 2 && series.encoding != "iio-le-72-v1";
+            const bool wantPhysical = unitModeBox_ && unitModeBox_->currentData().toString() == QStringLiteral("physical");
+            const std::string encoding = series.encoding;
+            startBackground(QStringLiteral("精确原始读数"), [input, expected, f, range, ids, target, estimated, wantPhysical, encoding](Cancel cancel) {
                 Database db(input, {}, cancel, expected); Result result; QStringList values;
                 for (const auto &id : ids) {
                     const auto point = db.probe(f, range, id, target);
-                    if (point) values << QStringLiteral("%1=%2 @ %3（Δ=%4 μs）").arg(qs(id), number(point->value), utcTime(point->timestamp)).arg(point->timestamp - target);
-                    else values << qs(id) + QStringLiteral("：窗口内无有效原始样本");
+                    if (point) {
+                        if (wantPhysical) {
+                            const auto cal = default_calibration(encoding, id);
+                            const double physVal = apply_calibration(point->value, cal);
+                            values << QStringLiteral("%1=%2 %3 (raw=%4) @ %5（Δ=%6 μs）")
+                                .arg(qs(id), number(physVal), qs(cal.physical_unit), number(point->value), utcTime(point->timestamp))
+                                .arg(point->timestamp - target);
+                        } else {
+                            values << QStringLiteral("%1=%2 @ %3（Δ=%4 μs）").arg(qs(id), number(point->value), utcTime(point->timestamp)).arg(point->timestamp - target);
+                        }
+                    } else values << qs(id) + QStringLiteral("：窗口内无有效原始样本");
                 }
                 result.readout = QStringLiteral("原始样本，不插值；最近有效样本%1：").arg(estimated ? QStringLiteral("；时间为采样率重建估计") : QString()) + values.join(QStringLiteral(" | ")); return result;
             }, [this, serial](Result result) { if (serial == probeSerial_) { lastExactReadout_ = result.readout; plot_->setReadout(result.readout); } }); return;
@@ -1239,7 +1340,8 @@ class MainWindow final : public QMainWindow {
         const auto key = cacheKey(next, ids, buckets);
         if (key == prefetchAttempt_ || cached(next, ids, buckets)) return;
         prefetchAttempt_ = key;
-        startBackground(QStringLiteral("预取下一窗口"), [input, expected, f, next, ids, buckets](Cancel cancel) { return readWindow(input, expected, f, next, ids, buckets, cancel); },
+        const auto audioOpts = currentAudioOptions();
+        startBackground(QStringLiteral("预取下一窗口"), [input, expected, f, next, ids, buckets, audioOpts](Cancel cancel) { return readWindow(input, expected, f, next, ids, buckets, audioOpts, cancel); },
             [this, next, ids, buckets](Result result) { remember(next, ids, buckets, result); });
     }
     void loadPage(Cursor cursor) {
@@ -1394,10 +1496,11 @@ class MainWindow final : public QMainWindow {
         const auto input = path_; const auto expected = source_; const auto destination = pathFromQt(output);
         const auto selectedFilter = filter(); const auto range = loaded_ ? *loaded_ : clock_.range();
         const auto channel = ids.front();
+        const auto audioOpts = currentAudioOptions();
         clock_.pause(); audioPlayer_.pause(); refreshPosition();
-        submit(QStringLiteral("导出 WAV 音频…"), [input, expected, destination, selectedFilter, range, channel](Cancel cancel) {
+        submit(QStringLiteral("导出 WAV 音频…"), [input, expected, destination, selectedFilter, range, channel, audioOpts](Cancel cancel) {
             Database db(input, {}, cancel, expected); Result result;
-            result.exported = db.export_wav(destination, selectedFilter, range, channel);
+            result.exported = db.export_wav(destination, selectedFilter, range, channel, audioOpts);
             result.path = destination;
             return result;
         }, [this](Result result) {
@@ -1497,6 +1600,7 @@ class MainWindow final : public QMainWindow {
     std::vector<Event> eventRows_;
     std::vector<PlotTrace> currentTraces_;
     std::optional<Spectrum> currentSpectrum_;
+    std::optional<Spectrogram> currentSpectrogram_;
     QString currentUnit_, currentCaption_, currentNote_;
     PlaybackClock clock_;
     AudioPlayer audioPlayer_;
@@ -1539,7 +1643,7 @@ class MainWindow final : public QMainWindow {
     QVariantAnimation *themeAnim_ = nullptr;
     QLabel *sourceLabel_ = nullptr, *seriesInfo_ = nullptr, *windowInfo_ = nullptr, *stateLabel_ = nullptr, *positionLabel_ = nullptr, *pageLabel_ = nullptr, *audioStatusLabel_ = nullptr;
     QListWidget *seriesList_ = nullptr;
-    QComboBox *channelBox_ = nullptr, *viewModeBox_ = nullptr, *themeBox_ = nullptr;
+    QComboBox *channelBox_ = nullptr, *unitModeBox_ = nullptr, *viewModeBox_ = nullptr, *audioFilterBox_ = nullptr, *themeBox_ = nullptr;
     QLineEdit *fromEdit_ = nullptr, *toEdit_ = nullptr, *seekEdit_ = nullptr;
     QDoubleSpinBox *windowSeconds_ = nullptr, *speed_ = nullptr;
     QSlider *timeline_ = nullptr, *volumeSlider_ = nullptr;

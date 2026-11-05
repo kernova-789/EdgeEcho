@@ -82,7 +82,7 @@ void PlotWidget::setPlaying(bool playing, double audioLevel) {
     audioLevel_ = std::clamp(audioLevel, 0.0, 1.0);
     if (playing_ && !pulseTimer_.isActive())
         pulseTimer_.start();
-    else if (!playing_ && !spectrumMode_ && pulseTimer_.isActive())
+    else if (!playing_ && !spectrumMode_ && !spectrogramMode_ && !dualMode_ && pulseTimer_.isActive())
         pulseTimer_.stop();
     update();
 }
@@ -100,6 +100,8 @@ void PlotWidget::setTraces(std::vector<PlotTrace> traces, Range range, QString u
     if (range.start < overall_.start || range.end > overall_.end)
         throw Error("Plot range exceeds selected source range");
     spectrumMode_ = false;
+    spectrogramMode_ = false;
+    dualMode_ = false;
     hoverFrequency_.reset();
     traces_ = std::move(traces); range_ = range; unit_ = std::move(unit);
     caption_ = std::move(caption); events_ = std::move(events); note_ = std::move(note);
@@ -109,9 +111,58 @@ void PlotWidget::setTraces(std::vector<PlotTrace> traces, Range range, QString u
 }
 void PlotWidget::setSpectrum(Spectrum spec, QString unit, QString caption, QString note) {
     spectrumMode_ = true;
+    spectrogramMode_ = false;
+    dualMode_ = false;
     spectrum_ = std::move(spec);
     unit_ = std::move(unit);
     caption_ = std::move(caption);
+    note_ = std::move(note);
+    hoverTime_.reset();
+    hoverFrequency_.reset();
+    pendingInspect_.reset();
+    inspectTimer_.stop();
+    setReadout({});
+    if (!pulseTimer_.isActive())
+        pulseTimer_.start();
+    animateTransition();
+    update();
+}
+void PlotWidget::setSpectrogram(Spectrogram sg, Range range, QString unit, QString caption, QString note) {
+    if (!valid(range)) throw Error("Spectrogram requires a nonempty UTC range");
+    if (!overallSet_) overall_ = range;
+    spectrumMode_ = false;
+    spectrogramMode_ = true;
+    dualMode_ = false;
+    spectrogram_ = std::move(sg);
+    range_ = range;
+    unit_ = std::move(unit);
+    caption_ = std::move(caption);
+    note_ = std::move(note);
+    hoverTime_.reset();
+    hoverFrequency_.reset();
+    pendingInspect_.reset();
+    inspectTimer_.stop();
+    setReadout({});
+    if (!pulseTimer_.isActive())
+        pulseTimer_.start();
+    animateTransition();
+    update();
+}
+void PlotWidget::setDualView(std::vector<PlotTrace> traces, Spectrum spec, Range range, QString unit,
+                             QString caption, std::vector<Event> events, QString note) {
+    if (!valid(range)) throw Error("Dual view requires a nonempty UTC range");
+    if (traces.size() > 16) throw Error("Too many simultaneous plot traces");
+    if (!overallSet_) overall_ = range;
+    spectrumMode_ = false;
+    spectrogramMode_ = false;
+    dualMode_ = true;
+    traces_ = std::move(traces);
+    for (auto &trace : traces_) if (!trace.color.isValid()) trace.color = fallbackColor;
+    spectrum_ = std::move(spec);
+    range_ = range;
+    unit_ = std::move(unit);
+    caption_ = std::move(caption);
+    events_ = std::move(events);
     note_ = std::move(note);
     hoverTime_.reset();
     hoverFrequency_.reset();
@@ -131,7 +182,8 @@ void PlotWidget::setOverallRange(Range range) {
 const Plot &PlotWidget::plot() const noexcept { return traces_.empty() ? empty_ : traces_.front().plot; }
 void PlotWidget::setPosition(Time position) { position_ = position; update(); }
 void PlotWidget::clear(QString note) {
-    traces_.clear(); events_.clear(); spectrum_ = {}; spectrumMode_ = false;
+    traces_.clear(); events_.clear(); spectrum_ = {}; spectrogram_ = {};
+    spectrumMode_ = false; spectrogramMode_ = false; dualMode_ = false;
     playing_ = false; audioLevel_ = 0.0; pulseTimer_.stop();
     setReadout({}); note_ = std::move(note);
     hoverTime_.reset(); hoverFrequency_.reset(); pendingInspect_.reset(); inspectTimer_.stop(); dragging_ = false;
@@ -262,6 +314,14 @@ void PlotWidget::updateHover(QPointF position) {
         update();
         return;
     }
+    if (spectrogramMode_) {
+        const double nyquist = spectrogram_.sample_rate_hz > 0.0 ? spectrogram_.sample_rate_hz * 0.5 : 1.0;
+        const double fy = std::clamp((box.bottom() - position.y()) / box.height(), 0.0, 1.0);
+        hoverFrequency_ = fy * nyquist;
+        hoverTime_ = timeAt(position.x());
+        update();
+        return;
+    }
     const auto target = timeAt(position.x());
     if (!hoverTime_ || *hoverTime_ != target) readout_.clear();
     hoverTime_ = pendingInspect_ = target;
@@ -283,6 +343,22 @@ QString PlotWidget::hoverPreview() const {
             .arg(unit_)
             .arg(spectrum_.dominant_frequency_hz, 0, 'f', 2)
             .arg(spectrum_.dominant_magnitude, 0, 'g', 6);
+    }
+    if (spectrogramMode_) {
+        if (!hoverTime_ || !hoverFrequency_ || spectrogram_.magnitudes_db.empty()) return {};
+        const double nyquist = spectrogram_.sample_rate_hz > 0.0 ? spectrogram_.sample_rate_hz * 0.5 : 1.0;
+        const double tx = std::clamp(static_cast<double>(*hoverTime_ - range_.start) /
+                                     std::max<double>(1.0, static_cast<double>(range_.end - range_.start)), 0.0, 0.999999);
+        const double fy = std::clamp(*hoverFrequency_ / nyquist, 0.0, 0.999999);
+        const std::size_t col = std::min(spectrogram_.time_bins - 1, static_cast<std::size_t>(tx * static_cast<double>(spectrogram_.time_bins)));
+        const std::size_t row = std::min(spectrogram_.freq_bins - 1, static_cast<std::size_t>(fy * static_cast<double>(spectrogram_.freq_bins)));
+        const double dbVal = spectrogram_.magnitudes_db[col * spectrogram_.freq_bins + row];
+        return QStringLiteral("游标 %1  ·  频率 %2 Hz  ·  能量 %3 dB  ·  主能峰 %4 Hz (%5 dB)")
+            .arg(utc(*hoverTime_))
+            .arg(*hoverFrequency_, 0, 'f', 1)
+            .arg(dbVal, 0, 'f', 1)
+            .arg(spectrogram_.dominant_frequency_hz, 0, 'f', 1)
+            .arg(spectrogram_.max_db, 0, 'f', 1);
     }
     if (!hoverTime_) return {};
     QStringList pieces{QStringLiteral("游标 %1").arg(utc(*hoverTime_))};
@@ -384,7 +460,7 @@ void PlotWidget::paintSpectrum(QPainter &painter) {
         }
         if (hoverFrequency_) {
             const double hx = box.left() + std::clamp(*hoverFrequency_ / nyquist, 0.0, 1.0) * box.width();
-            QColor hc = textCol; hc.setAlphaF(std::clamp(hoverAlpha_, 0.0, 1.0) * 0.65);
+            QColor hc = textCol; hc.setAlphaF(static_cast<float>(std::clamp(hoverAlpha_, 0.0, 1.0) * 0.65));
             painter.setPen(QPen(hc, 1.2, Qt::DotLine));
             painter.drawLine(QPointF(hx, box.top()), QPointF(hx, box.bottom()));
         }
@@ -416,6 +492,299 @@ void PlotWidget::paintSpectrum(QPainter &painter) {
             .arg(spectrum_.dominant_frequency_hz, 0, 'f', 2));
     painter.setPen(textCol);
     painter.drawText(QRectF(15, box.bottom() + 41, width() - 30, 18), Qt::AlignLeft, hoverPreview());
+}
+
+void PlotWidget::paintSpectrogram(QPainter &painter) {
+    const auto pal = palette();
+    const QColor textCol = pal.color(QPalette::WindowText);
+    const QColor mutedText = pal.color(QPalette::PlaceholderText).isValid()
+        ? pal.color(QPalette::PlaceholderText) : textCol.lighter(130);
+    const QColor canvasBg = pal.color(QPalette::Base);
+    const QColor borderCol = pal.color(QPalette::Mid);
+
+    const auto fullBox = plotArea();
+    const QRectF box(fullBox.left(), fullBox.top(), std::max(40.0, fullBox.width() - 36.0), fullBox.height());
+    const QRectF barBox(box.right() + 8.0, box.top(), 14.0, box.height());
+
+    const auto thermalColor = [](double t) -> QColor {
+        t = std::clamp(t, 0.0, 1.0);
+        struct Stop { double pos; int r, g, b; };
+        static constexpr Stop stops[] = {
+            {0.00,  14,  18,  46},
+            {0.25,  24,  88, 168},
+            {0.50,  18, 168, 142},
+            {0.75, 240, 186,  42},
+            {1.00, 232,  56,  52}
+        };
+        for (int i = 0; i < 4; ++i) {
+            if (t <= stops[i + 1].pos) {
+                const double u = (t - stops[i].pos) / (stops[i + 1].pos - stops[i].pos);
+                const int r = static_cast<int>(std::lround(stops[i].r + (stops[i + 1].r - stops[i].r) * u));
+                const int g = static_cast<int>(std::lround(stops[i].g + (stops[i + 1].g - stops[i].g) * u));
+                const int b = static_cast<int>(std::lround(stops[i].b + (stops[i + 1].b - stops[i].b) * u));
+                return QColor(r, g, b);
+            }
+        }
+        return QColor(232, 56, 52);
+    };
+
+    painter.fillRect(box, canvasBg);
+    const double nyquist = spectrogram_.sample_rate_hz > 0.0 ? spectrogram_.sample_rate_hz * 0.5 : 1.0;
+    const double dbSpan = std::max(1.0, spectrogram_.max_db - spectrogram_.min_db);
+    const double reveal = std::clamp(transitionProgress_, 0.15, 1.0);
+
+    if (spectrogram_.time_bins > 0 && spectrogram_.freq_bins > 0 &&
+        spectrogram_.magnitudes_db.size() == spectrogram_.time_bins * spectrogram_.freq_bins) {
+        painter.save();
+        painter.setClipRect(box);
+        const double cellW = box.width() / static_cast<double>(spectrogram_.time_bins);
+        const double cellH = box.height() / static_cast<double>(spectrogram_.freq_bins);
+        const std::size_t visibleCols = std::max<std::size_t>(1,
+            static_cast<std::size_t>(std::ceil(static_cast<double>(spectrogram_.time_bins) * reveal)));
+
+        for (std::size_t c = 0; c < visibleCols && c < spectrogram_.time_bins; ++c) {
+            const double x = box.left() + static_cast<double>(c) * cellW;
+            for (std::size_t r = 0; r < spectrogram_.freq_bins; ++r) {
+                const double db = spectrogram_.magnitudes_db[c * spectrogram_.freq_bins + r];
+                const double norm = std::clamp((db - spectrogram_.min_db) / dbSpan, 0.0, 1.0);
+                const double y = box.bottom() - static_cast<double>(r + 1) * cellH;
+                painter.fillRect(QRectF(x, y, cellW + 0.65, cellH + 0.65), thermalColor(norm));
+            }
+        }
+
+        // Dominant time-frequency peak ring
+        if (spectrogram_.dominant_frequency_hz > 0.0 && range_.end > range_.start) {
+            const double px = box.left() + std::clamp(spectrogram_.dominant_time_ratio, 0.0, 1.0) * box.width();
+            const double py = box.bottom() - std::clamp(spectrogram_.dominant_frequency_hz / nyquist, 0.0, 1.0) * box.height();
+            const double pulseRadius = 5.0 + 3.0 * (0.5 + 0.5 * std::sin(pulsePhase_));
+            painter.setPen(QPen(QColor(255, 255, 255, 220), 1.6));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawEllipse(QPointF(px, py), pulseRadius, pulseRadius);
+        }
+
+        // Playhead vertical line
+        if (position_ >= range_.start && position_ < range_.end) {
+            const double px = box.left() + static_cast<double>(position_ - range_.start) /
+                static_cast<double>(range_.end - range_.start) * box.width();
+            painter.setPen(QPen(QColor(255, 255, 255, 230), 1.8, Qt::DashLine));
+            painter.drawLine(QPointF(px, box.top()), QPointF(px, box.bottom()));
+        }
+
+        // Hover crosshair
+        if (hoverTime_ && hoverFrequency_) {
+            const double hx = box.left() + std::clamp(
+                static_cast<double>(*hoverTime_ - range_.start) /
+                static_cast<double>(range_.end - range_.start), 0.0, 1.0) * box.width();
+            const double hy = box.bottom() - std::clamp(*hoverFrequency_ / nyquist, 0.0, 1.0) * box.height();
+            painter.setPen(QPen(QColor(255, 255, 255, 165), 1.0, Qt::DotLine));
+            painter.drawLine(QPointF(hx, box.top()), QPointF(hx, box.bottom()));
+            painter.drawLine(QPointF(box.left(), hy), QPointF(box.right(), hy));
+        }
+        painter.restore();
+    } else {
+        painter.setPen(mutedText);
+        painter.drawText(box.adjusted(15, 10, -15, -10), Qt::AlignCenter | Qt::TextWordWrap,
+                         note_.isEmpty() ? QStringLiteral("当前区间没有足够样本计算 STFT 时频瀑布图") : note_);
+    }
+
+    painter.setPen(QPen(borderCol, 1));
+    painter.drawRect(box);
+
+    // Thermal colorbar
+    QLinearGradient barGrad(0, barBox.bottom(), 0, barBox.top());
+    barGrad.setColorAt(0.00, thermalColor(0.00));
+    barGrad.setColorAt(0.25, thermalColor(0.25));
+    barGrad.setColorAt(0.50, thermalColor(0.50));
+    barGrad.setColorAt(0.75, thermalColor(0.75));
+    barGrad.setColorAt(1.00, thermalColor(1.00));
+    painter.fillRect(barBox, barGrad);
+    painter.drawRect(barBox);
+
+    painter.setPen(textCol);
+    for (int index = 0; index <= 4; ++index) {
+        const double freq = nyquist * (4 - index) / 4.0;
+        const double y = box.top() + box.height() * index / 4.0;
+        painter.drawText(QRectF(2, y - 9, box.left() - 8, 18), Qt::AlignRight | Qt::AlignVCenter,
+                         QStringLiteral("%1 Hz").arg(freq, 0, 'f', freq >= 100.0 ? 0 : 1));
+    }
+    painter.drawText(QRectF(box.left(), box.bottom() + 4, box.width(), 18), Qt::AlignLeft, utc(range_.start));
+    painter.setPen(mutedText);
+    painter.drawText(QRectF(box.left(), box.bottom() + 22, fullBox.width(), 18), Qt::AlignLeft,
+        QStringLiteral("STFT 时频瀑布图（50% 重叠 Hann 窗） · %1×%2 网格 · 采样率 %3 Hz · 主能峰 %4 Hz (%5 dB)")
+            .arg(spectrogram_.time_bins)
+            .arg(spectrogram_.freq_bins)
+            .arg(spectrogram_.sample_rate_hz, 0, 'g', 6)
+            .arg(spectrogram_.dominant_frequency_hz, 0, 'f', 1)
+            .arg(spectrogram_.max_db, 0, 'f', 1));
+    painter.setPen(textCol);
+    painter.drawText(QRectF(12, box.bottom() + 40, width() - 24, 18), Qt::AlignLeft, hoverPreview());
+}
+
+void PlotWidget::paintDualView(QPainter &painter) {
+    const auto pal = palette();
+    const QColor textCol = pal.color(QPalette::WindowText);
+    const QColor borderCol = pal.color(QPalette::Mid);
+    const QColor canvasBg = pal.color(QPalette::Base);
+    const bool darkCanvas = canvasBg.lightness() < 128;
+    const QColor gridCol = darkCanvas ? canvasBg.lighter(135) : canvasBg.darker(110);
+    const QColor mutedText = darkCanvas ? textCol.darker(125) : textCol.lighter(135);
+    const QColor specCol = darkCanvas ? QColor("#4da3ff") : QColor("#005fb8");
+
+    const auto fullBox = plotArea();
+    const double gap = 22.0;
+    const double topH = std::max(60.0, (fullBox.height() - gap) * 0.54);
+    const double botH = std::max(60.0, fullBox.height() - gap - topH);
+    const QRectF topBox(fullBox.left(), fullBox.top(), fullBox.width(), topH);
+    const QRectF botBox(fullBox.left(), topBox.bottom() + gap, fullBox.width(), botH);
+
+    // 1. Top Subplot: Time-Domain Waveform
+    painter.fillRect(topBox, canvasBg);
+    painter.setPen(QPen(gridCol, 1));
+    for (int i = 0; i <= 2; ++i) {
+        const double y = topBox.top() + topBox.height() * i / 2.0;
+        painter.drawLine(QPointF(topBox.left(), y), QPointF(topBox.right(), y));
+    }
+    for (int i = 0; i <= 5; ++i) {
+        const double x = topBox.left() + topBox.width() * i / 5.0;
+        painter.drawLine(QPointF(x, topBox.top()), QPointF(x, topBox.bottom()));
+    }
+    painter.setPen(QPen(borderCol, 1));
+    painter.drawRect(topBox);
+
+    double minimum = std::numeric_limits<double>::infinity(), maximum = -minimum;
+    for (const auto &trace : traces_) {
+        for (const auto &point : trace.plot.points)
+            if (!point.gap && std::isfinite(point.value) && point.timestamp >= range_.start && point.timestamp < range_.end) {
+                minimum = std::min(minimum, point.value);
+                maximum = std::max(maximum, point.value);
+            }
+    }
+    if (!std::isfinite(minimum) || !std::isfinite(maximum)) { minimum = -1.0; maximum = 1.0; }
+    const double spanVal = (maximum > minimum) ? (maximum - minimum) * 1.12 : 2.0;
+    const double midVal = 0.5 * (maximum + minimum);
+    const double lowVal = midVal - 0.5 * spanVal;
+    const double highVal = midVal + 0.5 * spanVal;
+
+    const auto xFor = [&](Time time) {
+        const double frac = static_cast<double>(time - range_.start) /
+                            std::max<double>(1.0, static_cast<double>(range_.end - range_.start));
+        return topBox.left() + frac * topBox.width();
+    };
+    const auto yFor = [&](double val) {
+        const double frac = std::clamp((val - lowVal) / (highVal - lowVal), 0.0, 1.0);
+        return topBox.bottom() - frac * topBox.height();
+    };
+
+    painter.save();
+    painter.setClipRect(topBox);
+    for (const auto &trace : traces_) {
+        painter.setPen(QPen(trace.color, 2.0));
+        QPainterPath curve;
+        bool connected = false;
+        for (const auto &pt : trace.plot.points) {
+            if (pt.gap || !std::isfinite(pt.value)) { connected = false; continue; }
+            const QPointF p(xFor(pt.timestamp), yFor(pt.value));
+            if (!connected) { curve.moveTo(p); connected = true; } else curve.lineTo(p);
+        }
+        painter.drawPath(curve);
+    }
+    if (position_ >= range_.start && position_ < range_.end) {
+        const double px = xFor(position_);
+        painter.setPen(QPen(QColor("#d9534f"), 1.6, Qt::DashLine));
+        painter.drawLine(QPointF(px, topBox.top()), QPointF(px, topBox.bottom()));
+    }
+    if (hoverTime_) {
+        const double hx = xFor(*hoverTime_);
+        painter.setPen(QPen(mutedText, 1.0, Qt::DotLine));
+        painter.drawLine(QPointF(hx, topBox.top()), QPointF(hx, topBox.bottom()));
+    }
+    painter.restore();
+
+    painter.setPen(textCol);
+    painter.drawText(QRectF(2, topBox.top() - 4, topBox.left() - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
+                     QString::number(highVal, 'g', 4));
+    painter.drawText(QRectF(2, topBox.bottom() - 12, topBox.left() - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
+                     QString::number(lowVal, 'g', 4));
+    painter.setPen(mutedText);
+    painter.drawText(QRectF(topBox.left() + 6, topBox.top() + 3, 240, 16), Qt::AlignLeft,
+                     QStringLiteral("上视图：时域包络 (%1)").arg(unit_));
+
+    // 2. Bottom Subplot: FFT Spectrum
+    painter.fillRect(botBox, canvasBg);
+    painter.setPen(QPen(gridCol, 1));
+    for (int i = 0; i <= 2; ++i) {
+        const double y = botBox.top() + botBox.height() * i / 2.0;
+        painter.drawLine(QPointF(botBox.left(), y), QPointF(botBox.right(), y));
+    }
+    for (int i = 0; i <= 5; ++i) {
+        const double x = botBox.left() + botBox.width() * i / 5.0;
+        painter.drawLine(QPointF(x, botBox.top()), QPointF(x, botBox.bottom()));
+    }
+    painter.setPen(QPen(borderCol, 1));
+    painter.drawRect(botBox);
+
+    double maxMag = 0.0;
+    for (const auto &bin : spectrum_.bins)
+        if (std::isfinite(bin.magnitude)) maxMag = std::max(maxMag, bin.magnitude);
+    const double nyquist = spectrum_.sample_rate_hz > 0.0 ? spectrum_.sample_rate_hz * 0.5 : 1.0;
+    const double yTop = maxMag > 0.0 ? maxMag * 1.08 : 1.0;
+    const double reveal = std::clamp(transitionProgress_, 0.15, 1.0);
+
+    if (!spectrum_.bins.empty() && maxMag > 0.0) {
+        painter.save();
+        painter.setClipRect(botBox);
+        QPainterPath linePath, fillPath;
+        bool first = true;
+        for (const auto &bin : spectrum_.bins) {
+            const double fx = std::clamp(bin.frequency_hz / nyquist, 0.0, 1.0);
+            const double fy = std::clamp((bin.magnitude / yTop) * reveal, 0.0, 1.0);
+            const QPointF pt(botBox.left() + fx * botBox.width(), botBox.bottom() - fy * botBox.height());
+            if (first) {
+                linePath.moveTo(pt);
+                fillPath.moveTo(botBox.left(), botBox.bottom());
+                fillPath.lineTo(pt);
+                first = false;
+            } else {
+                linePath.lineTo(pt);
+                fillPath.lineTo(pt);
+            }
+        }
+        fillPath.lineTo(botBox.right(), botBox.bottom());
+        fillPath.closeSubpath();
+        QLinearGradient grad(0, botBox.top(), 0, botBox.bottom());
+        QColor topFill = specCol; topFill.setAlpha(darkCanvas ? 85 : 60);
+        QColor botFill = specCol; botFill.setAlpha(darkCanvas ? 10 : 6);
+        grad.setColorAt(0.0, topFill);
+        grad.setColorAt(1.0, botFill);
+        painter.fillPath(fillPath, grad);
+        painter.setPen(QPen(specCol, 1.8));
+        painter.drawPath(linePath);
+        if (spectrum_.dominant_frequency_hz > 0.0) {
+            const double domX = botBox.left() + std::clamp(spectrum_.dominant_frequency_hz / nyquist, 0.0, 1.0) * botBox.width();
+            painter.setPen(QPen(QColor("#d9534f"), 1.4, Qt::DashLine));
+            painter.drawLine(QPointF(domX, botBox.top()), QPointF(domX, botBox.bottom()));
+        }
+        painter.restore();
+    }
+    painter.setPen(mutedText);
+    painter.drawText(QRectF(botBox.left() + 6, botBox.top() + 3, 320, 16), Qt::AlignLeft,
+                     QStringLiteral("下视图：FFT 频谱 (主频 %1 Hz)").arg(spectrum_.dominant_frequency_hz, 0, 'f', 2));
+    painter.setPen(textCol);
+    for (int index = 0; index <= 5; ++index) {
+        const double freq = nyquist * index / 5.0;
+        const double x = botBox.left() + botBox.width() * index / 5.0;
+        painter.drawText(QRectF(x - 40, botBox.bottom() + 4, 80, 18), Qt::AlignCenter,
+                         QStringLiteral("%1 Hz").arg(freq, 0, 'f', freq >= 100.0 ? 0 : 1));
+    }
+    painter.setPen(mutedText);
+    painter.drawText(QRectF(botBox.left(), botBox.bottom() + 21, botBox.width(), 18), Qt::AlignLeft,
+                     QStringLiteral("联动双视图 · 窗口 +%1 s · 单位 %2 · 主频 %3 Hz")
+                         .arg(static_cast<double>(range_.end - range_.start) / 1e6, 0, 'g', 7)
+                         .arg(unit_)
+                         .arg(spectrum_.dominant_frequency_hz, 0, 'f', 2));
+    painter.setPen(textCol);
+    painter.drawText(QRectF(12, botBox.bottom() + 39, width() - 24, 18), Qt::AlignLeft, hoverPreview());
+    painter.drawText(QRectF(12, botBox.bottom() + 57, width() - 24, 18), Qt::AlignLeft, readout_);
 }
 
 void PlotWidget::paintEvent(QPaintEvent *) {
@@ -459,6 +828,14 @@ void PlotWidget::paintEvent(QPaintEvent *) {
 
     if (spectrumMode_) {
         paintSpectrum(painter);
+        return;
+    }
+    if (spectrogramMode_) {
+        paintSpectrogram(painter);
+        return;
+    }
+    if (dualMode_) {
+        paintDualView(painter);
         return;
     }
 
@@ -549,7 +926,7 @@ void PlotWidget::paintEvent(QPaintEvent *) {
     }
     if (hoverTime_) {
         QColor hc = mutedText;
-        hc.setAlphaF(std::clamp(hoverAlpha_, 0.25, 1.0));
+        hc.setAlphaF(static_cast<float>(std::clamp(hoverAlpha_, 0.25, 1.0)));
         painter.setPen(QPen(hc, 1, Qt::DotLine));
         painter.drawLine(QPointF(xFor(*hoverTime_), box.top()), QPointF(xFor(*hoverTime_), box.bottom()));
     }

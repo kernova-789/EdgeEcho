@@ -27,13 +27,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           python3 tools/package_linux.py --build-dir build --output dist
-          python3 tools/validate_package.py --package dist/EdgeEcho-0.4.0-linux-x86_64 --output build/package-validation --validation-report build/current-validation.json
+          python3 tools/validate_package.py --package dist/EdgeEcho-0.5.0-linux-x86_64 --output build/package-validation --validation-report build/current-validation.json
       - name: Package Windows runtime
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           ./tools/package_windows.ps1 -BuildDir build -Output dist
-          python tools/validate_package.py --package dist/EdgeEcho-0.4.0-windows-x86_64 --output build/package-validation --validation-report build/current-validation.json
+          python tools/validate_package.py --package dist/EdgeEcho-0.5.0-windows-x86_64 --output build/package-validation --validation-report build/current-validation.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

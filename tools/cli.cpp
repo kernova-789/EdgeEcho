@@ -82,10 +82,11 @@ void print_help() {
         "  edgeecho_cli inspect <database-or-directory>\n"
         "  edgeecho_cli demo <new-database> [--records N]\n"
         "  edgeecho_cli export <database> <new-csv> [filters] [--export-timeout-ms 1800000]\n"
-        "  edgeecho_cli audio <database> <new-wav> [filters] [--channel sound] [--sample-rate 0]\n"
+        "  edgeecho_cli audio <database> <new-wav> [filters] [--channel sound] [--sample-rate 0] [--low-cut 0] [--high-cut 0]\n"
         "  edgeecho_cli records <database> [filters]\n"
         "  edgeecho_cli plot <database> [filters] [--channel value] [--buckets 1500]\n"
         "  edgeecho_cli spectrum <database> [filters] [--channel value] [--bins 2048]\n"
+        "  edgeecho_cli spectrogram <database> [filters] [--channel value] [--time-bins 128] [--freq-bins 128]\n"
         "  edgeecho_cli benchmark <database> [filters] [--channel value] [--buckets 1500]\n"
         "  edgeecho_cli probe <database> [filters] --at UTC_US [--channel value]\n"
         "Filters: --sensor ID --type TYPE --unit UNIT --start UTC_US --end UTC_US\n"
@@ -134,7 +135,7 @@ int execute(const std::vector<std::string> &args) {
     }
     const auto &command = args[0];
     if (command != "inspect" && command != "demo" && command != "export" && command != "audio" &&
-        command != "records" && command != "plot" && command != "spectrum" &&
+        command != "records" && command != "plot" && command != "spectrum" && command != "spectrogram" &&
         command != "benchmark" && command != "probe")
         throw Error("Unknown command: " + command + "; use --help");
     if (args.size() < 2) throw Error("Missing database path; use --help");
@@ -159,8 +160,12 @@ int execute(const std::vector<std::string> &args) {
     if (command == "spectrum") {
         allowed.push_back("--channel"); allowed.push_back("--bins");
     }
+    if (command == "spectrogram") {
+        allowed.push_back("--channel"); allowed.push_back("--time-bins"); allowed.push_back("--freq-bins");
+    }
     if (command == "audio") {
         allowed.push_back("--channel"); allowed.push_back("--sample-rate");
+        allowed.push_back("--low-cut"); allowed.push_back("--high-cut");
     }
     if (command == "export") allowed.push_back("--export-timeout-ms");
     if (command == "probe") { allowed.push_back("--at"); allowed.push_back("--channel"); }
@@ -170,8 +175,8 @@ int execute(const std::vector<std::string> &args) {
     // Discover series/counts only when bounds or a single-series default need it.
     Overview overview;
     const auto requested_filter = filter(o);
-    const bool infer_series = (command == "plot" || command == "spectrum" || command == "audio" ||
-                               command == "benchmark" || command == "probe") &&
+    const bool infer_series = (command == "plot" || command == "spectrum" || command == "spectrogram" ||
+                               command == "audio" || command == "benchmark" || command == "probe") &&
         requested_filter.sensor.empty() && requested_filter.type.empty() && requested_filter.unit.empty();
     if (!o.has("--start") || !o.has("--end") || infer_series) overview = db.overview();
     const auto r = range(o, overview);
@@ -208,6 +213,10 @@ int execute(const std::vector<std::string> &args) {
                 if (sr != 0 && sr < 100) throw Error("--sample-rate must be 0 or in [100,192000]");
                 audio_opts.sample_rate_hz = static_cast<std::uint32_t>(sr);
             }
+            if (o.has("--low-cut"))
+                audio_opts.low_cut_hz = static_cast<double>(integer(o.get("--low-cut"), "--low-cut", 0, 96000));
+            if (o.has("--high-cut"))
+                audio_opts.high_cut_hz = static_cast<double>(integer(o.get("--high-cut"), "--high-cut", 0, 96000));
             const auto channel = o.get("--channel", "sound");
             const auto samples = db.export_wav(std::filesystem::u8path(args[2]), f, r, channel, audio_opts);
             std::cout << "{\"exported_samples\":" << samples << ",\"path\":" << quoted(args[2]) << "}\n";
@@ -224,6 +233,22 @@ int execute(const std::vector<std::string> &args) {
             for (const auto &bin : s.bins)
                 std::cout << "{\"frequency_hz\":" << bin.frequency_hz
                           << ",\"magnitude\":" << bin.magnitude << "}\n";
+            return std::cout ? 0 : 1;
+        }
+        if (command == "spectrogram") {
+            const auto tbins = integer(o.get("--time-bins", "128"), "--time-bins", 4, 1024);
+            const auto fbins = integer(o.get("--freq-bins", "128"), "--freq-bins", 8, 2048);
+            const auto sg = db.spectrogram(f, r, o.get("--channel", "value"),
+                                           static_cast<std::size_t>(tbins),
+                                           static_cast<std::size_t>(fbins));
+            std::cout << "{\"sample_rate_hz\":" << sg.sample_rate_hz
+                      << ",\"samples_used\":" << sg.samples_used
+                      << ",\"time_bins\":" << sg.time_bins
+                      << ",\"freq_bins\":" << sg.freq_bins
+                      << ",\"dominant_frequency_hz\":" << sg.dominant_frequency_hz
+                      << ",\"dominant_time_ratio\":" << sg.dominant_time_ratio
+                      << ",\"max_db\":" << sg.max_db
+                      << ",\"min_db\":" << sg.min_db << "}\n";
             return std::cout ? 0 : 1;
         }
         if (command == "probe") {

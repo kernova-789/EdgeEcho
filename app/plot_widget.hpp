@@ -29,8 +29,14 @@ class PlotWidget final : public QWidget {
     void setTraces(std::vector<PlotTrace>, Range, QString unit, QString caption,
                    std::vector<Event>, QString note);
     void setSpectrum(Spectrum, QString unit, QString caption, QString note);
+    void setSpectrogram(Spectrogram, Range, QString unit, QString caption, QString note);
+    void setDualView(std::vector<PlotTrace>, Spectrum, Range, QString unit, QString caption,
+                     std::vector<Event>, QString note);
     bool isSpectrumMode() const noexcept { return spectrumMode_; }
+    bool isSpectrogramMode() const noexcept { return spectrogramMode_; }
+    bool isDualMode() const noexcept { return dualMode_; }
     const Spectrum &spectrum() const noexcept { return spectrum_; }
+    const Spectrogram &spectrogram() const noexcept { return spectrogram_; }
     void setOverallRange(Range);
     Range plotRange() const noexcept { return range_; }
     std::size_t traceCount() const noexcept { return traces_.size(); }
@@ -62,10 +68,15 @@ class PlotWidget final : public QWidget {
     void updateHover(QPointF);
     QString hoverPreview() const;
     void paintSpectrum(QPainter &);
+    void paintSpectrogram(QPainter &);
+    void paintDualView(QPainter &);
     std::vector<PlotTrace> traces_;
     Plot empty_;
     Spectrum spectrum_;
+    Spectrogram spectrogram_;
     bool spectrumMode_ = false;
+    bool spectrogramMode_ = false;
+    bool dualMode_ = false;
     std::optional<double> hoverFrequency_;
     Range range_{0, 1}, overall_{0, 1}, dragRange_{0, 1};
     bool overallSet_ = false, dragging_ = false, moved_ = false, playing_ = false;

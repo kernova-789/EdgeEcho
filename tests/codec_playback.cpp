@@ -282,6 +282,37 @@ void audio_and_spectrum_tests() {
     rejects([&] { (void)compute_spectrum({1.0, 2.0}, 1000.0); }, "too few samples rejected");
     rejects([&] { (void)compute_spectrum(tone, 0.0); }, "zero spectrum sample rate rejected");
 
+    const auto sg = compute_spectrogram(tone, 1000.0, {1000, 1025000}, 64, 128);
+    require(sg.time_bins == 64 && sg.freq_bins == 128 &&
+            sg.magnitudes_db.size() == 64 * 128, "spectrogram dimensions");
+    require(std::abs(sg.dominant_frequency_hz - 80.0) < 5.0 && sg.max_db > sg.min_db,
+            "spectrogram identifies 80 Hz peak");
+
+    std::vector<double> dual_tone(1024);
+    for (std::size_t i = 0; i < dual_tone.size(); ++i) {
+        const double t = static_cast<double>(i) / 1000.0;
+        dual_tone[i] = 100.0 * std::sin(2.0 * 3.14159265358979323846 * 30.0 * t) +
+                       100.0 * std::sin(2.0 * 3.14159265358979323846 * 260.0 * t);
+    }
+    const auto hp = filter_bandpass(dual_tone, 1000.0, 150.0, 0.0);
+    const auto hp_spec = compute_spectrum(hp, 1000.0, 512);
+    require(std::abs(hp_spec.dominant_frequency_hz - 260.0) < 3.0,
+            "high-pass filter suppresses 30 Hz and preserves 260 Hz");
+    const auto lp = filter_bandpass(dual_tone, 1000.0, 0.0, 100.0);
+    const auto lp_spec = compute_spectrum(lp, 1000.0, 512);
+    require(std::abs(lp_spec.dominant_frequency_hz - 30.0) < 3.0,
+            "low-pass filter suppresses 260 Hz and preserves 30 Hz");
+
+    const auto cal_acc = default_calibration("iio-le-72-v1", "x_high_freq_acc_rms");
+    require(std::abs(cal_acc.scale - 0.0980665) < 1e-7 && cal_acc.physical_unit == "m/s²",
+            "mems_driver acceleration physical calibration");
+    const auto cal_vel = default_calibration("iio-le-72-v1", "y_velocity_rms");
+    require(std::abs(cal_vel.scale - 0.01) < 1e-7 && cal_vel.physical_unit == "mm/s",
+            "mems_driver velocity physical calibration");
+    const auto cal_temp = default_calibration("iio-le-72-v1", "temperature");
+    require(std::abs(apply_calibration(2550.0, cal_temp) - 25.5) < 1e-6 && cal_temp.physical_unit == "°C",
+            "mems_driver temperature physical calibration");
+
     AudioPlayer player;
     require(!player.has_clip() && !player.is_playing(), "player initially empty");
     player.load(clip);
@@ -289,6 +320,12 @@ void audio_and_spectrum_tests() {
     player.set_volume(0.5);
     require(std::abs(player.volume() - 0.5) < 1e-6, "player volume");
     rejects([&] { player.set_volume(1.5); }, "invalid volume rejected");
+    player.set_playback_speed(2.0);
+    require(std::abs(player.playback_speed() - 2.0) < 1e-6, "player WSOLA playback speed 2.0x");
+    player.set_playback_speed(0.5);
+    require(std::abs(player.playback_speed() - 0.5) < 1e-6, "player WSOLA playback speed 0.5x");
+    player.set_playback_speed(1.0);
+    rejects([&] { player.set_playback_speed(0.0); }, "invalid playback speed rejected");
     player.set_muted(true);
     require(player.muted(), "player muted");
     player.set_muted(false);

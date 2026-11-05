@@ -4,7 +4,7 @@
 
 先阅读的[开发报告](docs/DEVELOPMENT_REPORT.md)已在实现前形成；实际验证结果见 [VALIDATION.md](docs/VALIDATION.md)。
 
-当前版本为 **0.4.0**。历史复盘见 [首版开发评估](docs/DEVELOPMENT_REPORT_2026-10-29.md)；往期成果见 [第二阶段报告](docs/PHASE2_DEVELOPMENT_REPORT_2026-10-29.md) 和 [第三阶段报告](docs/PHASE3_DEVELOPMENT_REPORT_2026-10-29.md)；最新阶段成果与下一步规划见 [第四阶段报告](docs/PHASE4_DEVELOPMENT_REPORT_2026-11-05.md)。
+当前版本为 **0.5.0**。历史复盘见 [首版开发评估](docs/DEVELOPMENT_REPORT_2026-10-29.md)；往期成果见 [第二阶段报告](docs/PHASE2_DEVELOPMENT_REPORT_2026-10-29.md)、[第三阶段报告](docs/PHASE3_DEVELOPMENT_REPORT_2026-10-29.md) 和 [第四阶段报告](docs/PHASE4_DEVELOPMENT_REPORT_2026-11-05.md)；Windows 平台原生编译交付说明见 [Windows AI 接力指南](docs/WINDOWS_AI_HANDOFF.md)。
 
 ## 界面预览（Linux Ubuntu Yaru / GTK4 & Windows 11 Fluent / WinUI 3 · 浅色 / 深色模式）
 
@@ -34,9 +34,9 @@
 
 ## 桌面操作
 
-1. 打开数据库，左侧按「传感器 / 指标 / 单位」选择系列，再选择通道与图像视图模式（时域波形 `Waveform` / FFT 频谱图 `Spectrum`）。界面全面使用 Linux / Windows 系统原生控件与系统主题配色（`QMainWindow`、`QMenuBar`、`QToolBar`、`QGroupBox`、`QTabWidget`、`QPalette`），并配有平滑过渡与动态反馈动画。
+1. 打开数据库，左侧按「传感器 / 指标 / 单位」选择系列，再选择数据通道、量纲模式（`ADC 原始值 (count)` / `物理工程量纲 (Physical)`）与图像视图模式（`时域波形 Waveform` / `FFT 频谱图 Spectrum` / `STFT 时频瀑布图 Spectrogram` / `联动双视图：时域 + 频谱 Dual`）。界面全面使用 Linux / Windows 系统原生控件与系统主题配色（`QMainWindow`、`QMenuBar`、`QToolBar`、`QGroupBox`、`QTabWidget`、`QPalette`），并配有平滑过渡与动态反馈动画。
 2. 默认查看 10 秒窗口。播放、暂停、停止、倍速，以及时间轴鼠标/键盘、图上单击和精确时间跳转共同控制位置。相邻窗口低优先级预取，最多缓存3个窗口及估计32 MiB结果。
-3. 选中声音（`iio-le-16-v1`）或波形系列时，软件支持实时系统声卡音频输出（Linux PulseAudio / PipeWire / ALSA 动态加载，Windows WinMM `waveOut`）、音量滑块、静音开关、「试听当前窗口」及实时动态电平指示，并可将当前窗口或区间导出为标准 RIFF WAVE（16-bit PCM `.wav`）音频文件。
+3. 选中声音（`iio-le-16-v1`）或波形系列时，软件支持实时系统声卡音频输出（Linux PulseAudio / PipeWire / ALSA 动态加载，Windows WinMM `waveOut`）、WSOLA 倍速保调时间伸缩（随倍速同步变速不变调）、零相位二阶 Butterworth 数字滤波听诊模式（全频段原声 / 高通除噪 / 共振带通 / 低通包络）、音量滑块、静音开关、「试听当前窗口」及实时动态电平指示，并可将当前窗口或区间导出为标准 RIFF WAVE（16-bit PCM `.wav`）音频文件。
 4. 底部面板分类收纳「原始记录表」、「诊断事件」、「选中记录详情」与「时间与区间设置」（含日历选择与 0..999 微秒余数、精确 UTC 微秒输入），可随时通过工具栏「隐藏/显示详情面板」平滑收起或展开。
 5. 原始记录表分页显示当前窗口内 timestamp 属于 `[start,end)` 的记录。详情显示原始质量、rate、source、batch、metadata 和前 256 字节预览。跨入窗口起点的波形参与画图，不会因此改变原始记录表/CSV的选择语义。
 6. 事件表和背景阴影使用有效最新诊断版本，已撤销事件不显示；双击事件跳转。
@@ -103,8 +103,9 @@ ctest --test-dir build-core --output-on-failure
 ./build/edgeecho_cli inspect demo.db
 ./build/edgeecho_cli records demo.db --sensor demo-vibration --type acceleration_rms --unit count
 ./build/edgeecho_cli export demo.db output.csv --sensor demo-vibration --type acceleration_rms --unit count
-./build/edgeecho_cli audio demo.db output.wav --sensor demo-sound --type sound_iio_block --unit count --channel sound
-./build/edgeecho_cli spectrum demo.db --sensor demo-sound --type sound_iio_block --unit count --channel sound --buckets 512
+./build/edgeecho_cli audio demo.db output.wav --sensor demo-sound --type sound_iio_block --unit count --channel sound --low-cut 50 --high-cut 250
+./build/edgeecho_cli spectrum demo.db --sensor demo-sound --type sound_iio_block --unit count --channel sound --bins 512
+./build/edgeecho_cli spectrogram demo.db --sensor demo-sound --type sound_iio_block --unit count --channel sound --time-bins 64 --freq-bins 64
 ./build/edgeecho_cli benchmark demo.db --sensor demo-vibration --type vibration_iio_block --unit count --channel x
 ```
 
@@ -133,7 +134,7 @@ python3 tools/validate_current.py --profiles release asan windows-cross \
   --report docs/evidence/current-validation.json --parallel 4
 python3 tools/package_linux.py --build-dir build --output dist-linux
 python3 tools/validate_package.py \
-  --package dist-linux/EdgeEcho-0.4.0-linux-x86_64 \
+  --package dist-linux/EdgeEcho-0.5.0-linux-x86_64 \
   --validation-report docs/evidence/current-validation.json
 ```
 

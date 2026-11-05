@@ -404,14 +404,270 @@ Spectrum compute_spectrum(const std::vector<double> &samples, double sample_rate
     return result;
 }
 
+namespace {
+struct BiquadCoeffs {
+    double b0 = 1.0, b1 = 0.0, b2 = 0.0;
+    double a1 = 0.0, a2 = 0.0;
+};
+
+BiquadCoeffs make_butterworth_lowpass(double cutoff_hz, double sample_rate_hz) {
+    const double nyquist = 0.5 * sample_rate_hz;
+    const double fc = std::clamp(cutoff_hz, 0.5, nyquist * 0.98);
+    const double k = std::tan(pi * fc / sample_rate_hz);
+    const double k2 = k * k;
+    const double sqrt2 = 1.4142135623730951;
+    const double norm = 1.0 / (1.0 + sqrt2 * k + k2);
+    BiquadCoeffs c;
+    c.b0 = k2 * norm;
+    c.b1 = 2.0 * c.b0;
+    c.b2 = c.b0;
+    c.a1 = 2.0 * (k2 - 1.0) * norm;
+    c.a2 = (1.0 - sqrt2 * k + k2) * norm;
+    return c;
+}
+
+BiquadCoeffs make_butterworth_highpass(double cutoff_hz, double sample_rate_hz) {
+    const double nyquist = 0.5 * sample_rate_hz;
+    const double fc = std::clamp(cutoff_hz, 0.5, nyquist * 0.98);
+    const double k = std::tan(pi * fc / sample_rate_hz);
+    const double k2 = k * k;
+    const double sqrt2 = 1.4142135623730951;
+    const double norm = 1.0 / (1.0 + sqrt2 * k + k2);
+    BiquadCoeffs c;
+    c.b0 = norm;
+    c.b1 = -2.0 * c.b0;
+    c.b2 = c.b0;
+    c.a1 = 2.0 * (k2 - 1.0) * norm;
+    c.a2 = (1.0 - sqrt2 * k + k2) * norm;
+    return c;
+}
+
+void run_biquad_zero_phase(std::vector<double> &data, const BiquadCoeffs &c) {
+    if (data.size() < 4)
+        return;
+    // Forward pass
+    double z1 = 0.0, z2 = 0.0;
+    for (double &x : data) {
+        const double v = std::isfinite(x) ? x : 0.0;
+        const double y = c.b0 * v + z1;
+        z1 = c.b1 * v - c.a1 * y + z2;
+        z2 = c.b2 * v - c.a2 * y;
+        x = y;
+    }
+    // Backward pass for zero phase distortion
+    z1 = 0.0;
+    z2 = 0.0;
+    for (std::size_t i = data.size(); i > 0; --i) {
+        const double v = data[i - 1];
+        const double y = c.b0 * v + z1;
+        z1 = c.b1 * v - c.a1 * y + z2;
+        z2 = c.b2 * v - c.a2 * y;
+        data[i - 1] = y;
+    }
+}
+
+std::vector<std::int16_t> wsola_stretch_pcm16(const std::vector<std::int16_t> &in,
+                                              std::uint32_t sample_rate_hz,
+                                              double speed) {
+    if (in.empty() || std::abs(speed - 1.0) < 0.01)
+        return in;
+    const double clamped_speed = std::clamp(speed, 0.25, 4.0);
+    const std::size_t out_len = std::max<std::size_t>(
+        64, static_cast<std::size_t>(std::llround(static_cast<double>(in.size()) / clamped_speed)));
+    const std::size_t win_len = std::clamp<std::size_t>(sample_rate_hz / 40U, 128U, 2048U); // ~25 ms
+    const std::size_t hop_out = std::max<std::size_t>(16, win_len / 2);
+    const std::size_t search_tol = std::max<std::size_t>(8, win_len / 6);
+
+    if (in.size() <= win_len * 2) {
+        return resample_pcm16(in, sample_rate_hz,
+                              static_cast<std::uint32_t>(std::clamp(
+                                  std::llround(sample_rate_hz / clamped_speed), 1000LL, 384000LL)));
+    }
+
+    std::vector<double> hann(win_len);
+    for (std::size_t i = 0; i < win_len; ++i) {
+        hann[i] = 0.5 * (1.0 - std::cos(2.0 * pi * static_cast<double>(i) /
+                                        static_cast<double>(win_len - 1)));
+    }
+
+    std::vector<double> accum(out_len + win_len, 0.0);
+    std::vector<double> norm(out_len + win_len, 0.0);
+
+    std::size_t out_pos = 0;
+    std::size_t prev_in_pos = 0;
+    bool first = true;
+
+    while (out_pos < out_len) {
+        const double target_in_f = static_cast<double>(out_pos) * clamped_speed;
+        const std::size_t nominal_in = static_cast<std::size_t>(std::min<double>(
+            target_in_f, static_cast<double>(in.size() - win_len)));
+
+        std::size_t best_in = nominal_in;
+        if (!first && prev_in_pos + hop_out + win_len < in.size()) {
+            const std::size_t expected = prev_in_pos + hop_out;
+            const std::size_t lo = nominal_in > search_tol ? nominal_in - search_tol : 0;
+            const std::size_t hi = std::min(in.size() - win_len, nominal_in + search_tol);
+            double best_corr = -1e30;
+            const std::size_t cmp_len = std::min<std::size_t>(hop_out, 128);
+            for (std::size_t cand = lo; cand <= hi; cand += 2) {
+                double corr = 0.0;
+                for (std::size_t k = 0; k < cmp_len; ++k) {
+                    corr += static_cast<double>(in[expected + k]) *
+                            static_cast<double>(in[cand + k]);
+                }
+                if (corr > best_corr) {
+                    best_corr = corr;
+                    best_in = cand;
+                }
+            }
+        }
+        first = false;
+        prev_in_pos = best_in;
+
+        for (std::size_t i = 0; i < win_len && (out_pos + i) < accum.size(); ++i) {
+            const double w = hann[i];
+            accum[out_pos + i] += static_cast<double>(in[best_in + i]) * w;
+            norm[out_pos + i] += w;
+        }
+        out_pos += hop_out;
+    }
+
+    std::vector<std::int16_t> out(out_len, 0);
+    for (std::size_t i = 0; i < out_len; ++i) {
+        const double val = norm[i] > 1e-6 ? (accum[i] / norm[i]) : 0.0;
+        out[i] = static_cast<std::int16_t>(std::clamp(std::lround(val), -32768L, 32767L));
+    }
+    return out;
+}
+} // namespace
+
+std::vector<double> filter_bandpass(const std::vector<double> &samples, double sample_rate_hz,
+                                    double low_cut_hz, double high_cut_hz) {
+    require(std::isfinite(sample_rate_hz) && sample_rate_hz > 0.0,
+            "Filter requires a finite positive sample rate");
+    std::vector<double> result = samples;
+    if (result.size() < 4)
+        return result;
+    const double nyquist = 0.5 * sample_rate_hz;
+    if (std::isfinite(low_cut_hz) && low_cut_hz > 0.5 && low_cut_hz < nyquist * 0.98) {
+        run_biquad_zero_phase(result, make_butterworth_highpass(low_cut_hz, sample_rate_hz));
+    }
+    if (std::isfinite(high_cut_hz) && high_cut_hz > 0.5 && high_cut_hz < nyquist * 0.98) {
+        if (low_cut_hz <= 0.0 || high_cut_hz > low_cut_hz) {
+            run_biquad_zero_phase(result, make_butterworth_lowpass(high_cut_hz, sample_rate_hz));
+        }
+    }
+    return result;
+}
+
+Spectrogram compute_spectrogram(const std::vector<double> &samples, double sample_rate_hz,
+                                Range range, std::size_t time_bins, std::size_t freq_bins) {
+    require(std::isfinite(sample_rate_hz) && sample_rate_hz > 0.0,
+            "Spectrogram requires a finite positive sample rate");
+    require(time_bins >= 4 && time_bins <= 512, "Spectrogram time_bins must be in [4, 512]");
+    require(freq_bins >= 4 && freq_bins <= 512, "Spectrogram freq_bins must be in [4, 512]");
+
+    std::vector<double> clean;
+    clean.reserve(std::min<std::size_t>(samples.size(), 131072));
+    double sum = 0.0;
+    for (double v : samples) {
+        if (std::isfinite(v)) {
+            clean.push_back(v);
+            sum += v;
+            if (clean.size() == 131072)
+                break;
+        }
+    }
+    require(clean.size() >= 16, "Spectrogram requires at least 16 finite samples");
+    const double mean = sum / static_cast<double>(clean.size());
+    for (double &v : clean)
+        v -= mean;
+
+    std::size_t fft_size = 64;
+    while (fft_size < freq_bins * 2 && fft_size < 1024)
+        fft_size *= 2;
+    while (fft_size > clean.size() && fft_size > 16)
+        fft_size /= 2;
+    const std::size_t half = fft_size / 2;
+
+    std::vector<double> hann(fft_size);
+    for (std::size_t i = 0; i < fft_size; ++i) {
+        hann[i] = 0.5 * (1.0 - std::cos(2.0 * pi * static_cast<double>(i) /
+                                        static_cast<double>(fft_size - 1)));
+    }
+
+    std::vector<double> raw_matrix(time_bins * freq_bins, 0.0);
+    double max_mag = 1e-12;
+    double dom_freq = 0.0;
+    double dom_time_ratio = 0.0;
+
+    std::vector<std::complex<double>> buf(fft_size);
+    for (std::size_t t = 0; t < time_bins; ++t) {
+        const double ratio = time_bins > 1
+            ? static_cast<double>(t) / static_cast<double>(time_bins - 1)
+            : 0.0;
+        const std::size_t max_start = clean.size() > fft_size ? (clean.size() - fft_size) : 0;
+        const std::size_t start = static_cast<std::size_t>(std::llround(ratio * static_cast<double>(max_start)));
+
+        for (std::size_t i = 0; i < fft_size; ++i) {
+            const double s = (start + i < clean.size()) ? clean[start + i] : 0.0;
+            buf[i] = {s * hann[i], 0.0};
+        }
+        fft_in_place(buf);
+
+        const double scale = 4.0 / static_cast<double>(fft_size);
+        for (std::size_t f = 0; f < freq_bins; ++f) {
+            const std::size_t k_begin = std::max<std::size_t>(1, f * half / freq_bins);
+            const std::size_t k_end = std::max(k_begin + 1, (f + 1) * (half + 1) / freq_bins);
+            double peak = 0.0;
+            std::size_t peak_k = k_begin;
+            for (std::size_t k = k_begin; k < k_end && k <= half; ++k) {
+                const double mag = std::abs(buf[k]) * scale;
+                if (mag > peak) {
+                    peak = mag;
+                    peak_k = k;
+                }
+            }
+            raw_matrix[t * freq_bins + f] = peak;
+            if (peak > max_mag) {
+                max_mag = peak;
+                dom_freq = static_cast<double>(peak_k) * sample_rate_hz / static_cast<double>(fft_size);
+                dom_time_ratio = ratio;
+            }
+        }
+    }
+
+    Spectrogram out;
+    out.range = range;
+    out.sample_rate_hz = sample_rate_hz;
+    out.max_frequency_hz = 0.5 * sample_rate_hz;
+    out.time_bins = time_bins;
+    out.freq_bins = freq_bins;
+    out.min_db = -72.0;
+    out.max_db = 0.0;
+    out.dominant_frequency_hz = dom_freq;
+    out.dominant_time_ratio = dom_time_ratio;
+    out.samples_used = clean.size();
+    out.magnitudes_db.resize(time_bins * freq_bins);
+
+    for (std::size_t i = 0; i < raw_matrix.size(); ++i) {
+        const double norm = std::max(1e-9, raw_matrix[i] / max_mag);
+        const double db = 20.0 * std::log10(norm);
+        out.magnitudes_db[i] = std::clamp(db, out.min_db, out.max_db);
+    }
+    return out;
+}
+
 struct AudioPlayer::Impl {
     mutable std::mutex mutex;
     std::condition_variable cv;
     AudioClip clip;
+    std::vector<std::int16_t> base_pcm;
     std::vector<std::int16_t> playback_pcm;
     std::uint32_t playback_rate = 16000;
     std::atomic<std::size_t> cursor_sample{0};
     std::atomic<double> volume{0.85};
+    std::atomic<double> speed{1.0};
     std::atomic<bool> muted{false};
     std::atomic<bool> playing{false};
     std::atomic<bool> stop_worker{false};
@@ -419,6 +675,19 @@ struct AudioPlayer::Impl {
     std::thread worker;
 
     ~Impl() { stop_thread(); }
+
+    void rebuild_stretched_pcm() {
+        if (base_pcm.empty()) {
+            playback_pcm.clear();
+            return;
+        }
+        const double sp = std::clamp(speed.load(std::memory_order_relaxed), 0.25, 4.0);
+        if (std::abs(sp - 1.0) < 0.01) {
+            playback_pcm = base_pcm;
+        } else {
+            playback_pcm = wsola_stretch_pcm16(base_pcm, playback_rate, sp);
+        }
+    }
 
     void stop_thread() {
         stop_worker.store(true, std::memory_order_relaxed);
@@ -531,12 +800,14 @@ void AudioPlayer::load(AudioClip clip) {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->clip = std::move(clip);
     if (impl_->clip.pcm16.empty() || impl_->clip.sample_rate_hz == 0) {
+        impl_->base_pcm.clear();
         impl_->playback_pcm.clear();
         impl_->playback_rate = 16000;
     } else {
         impl_->playback_rate = std::clamp<std::uint32_t>(impl_->clip.sample_rate_hz, 16000U, 96000U);
-        impl_->playback_pcm = resample_pcm16(
+        impl_->base_pcm = resample_pcm16(
             impl_->clip.pcm16, impl_->clip.sample_rate_hz, impl_->playback_rate);
+        impl_->rebuild_stretched_pcm();
     }
     impl_->cursor_sample.store(0, std::memory_order_relaxed);
 }
@@ -545,6 +816,7 @@ void AudioPlayer::clear() {
     impl_->stop_thread();
     std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->clip = {};
+    impl_->base_pcm.clear();
     impl_->playback_pcm.clear();
     impl_->cursor_sample.store(0, std::memory_order_relaxed);
 }
@@ -594,6 +866,29 @@ void AudioPlayer::set_volume(double volume) {
 
 double AudioPlayer::volume() const noexcept {
     return impl_->volume.load(std::memory_order_relaxed);
+}
+
+void AudioPlayer::set_playback_speed(double speed) {
+    require(std::isfinite(speed) && speed >= 0.01 && speed <= 1000.0,
+            "Audio playback speed must be in [0.01, 1000.0]");
+    const double clamped = std::clamp(speed, 0.25, 4.0);
+    if (std::abs(impl_->speed.load(std::memory_order_relaxed) - clamped) < 0.01)
+        return;
+    const bool was_playing = impl_->playing.load(std::memory_order_relaxed);
+    const Time cur_pos = position();
+    impl_->stop_thread();
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        impl_->speed.store(clamped, std::memory_order_relaxed);
+        impl_->rebuild_stretched_pcm();
+    }
+    seek(cur_pos);
+    if (was_playing)
+        impl_->start_thread();
+}
+
+double AudioPlayer::playback_speed() const noexcept {
+    return impl_->speed.load(std::memory_order_relaxed);
 }
 
 void AudioPlayer::set_muted(bool muted) noexcept {

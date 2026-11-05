@@ -1,92 +1,133 @@
-# EdgeEcho · Windows 平台 AI 接棒与开发指南（v0.4.0 → v0.5.0）
+# EdgeEcho v0.5.0 · Windows 平台 AI 编译、打包与 GitHub Release 上传流程
 
-本文档专为**接手本项目 Windows 平台构建、验证与后续特性开发的 AI 助手**编写。汇总了项目当前架构状态、已完成能力、Windows 平台构建命令与下一步核心任务。
-
----
-
-## 一、项目背景与当前基线状态（v0.4.0）
-
-- **项目定位**：`EdgeEcho` 是专为工业传感器数据离线回放项目 `EdgeSense Replay`（SQLite Schema v3，`application_id = 1163088464`）打造的跨平台（Linux / Windows）C++17 + Qt 6 桌面回放、听诊与分析软件。
-- **源码仓库**：`https://github.com/kernova-789/EdgeEcho` (当前分支 `main`)
-- **核心能力已全部就绪（跨系统通用）**：
-  1. **数据解码与绘图**：标量、三轴振动 `iio-le-24-v1`（XYZ 同轴同屏）、声音 PCM `iio-le-16-v1`、29 维特征包 `iio-le-72-v1`、通用小端波形；多通道峰值保留防抽点失真，非 `good` 质量自动断线。
-  2. **跨平台实时声音播放与听诊**：`AudioPlayer` 在 Linux 动态加载 PulseAudio/ALSA，Windows 端原生链接 `winmm`（`waveOut` 实现于 `src/audio.cpp`）；支持与回放轴同步播放、音量/静音控制、当前窗口试听与电平表。
-  3. **频域 FFT 频谱分析**：去直流 + Hann 窗 Cooley-Tukey Radix-2 FFT（`compute_spectrum`），支持一键切换频谱图与主频自动标注。
-  4. **原子 CSV / WAV 导出**：`Database::export_csv` 与 `Database::export_wav` 均通过私有临时文件原子提交，绝不覆盖已有文件。
-  5. **双系统原生组件风格 (`NativeOsProxyStyle`) 与平滑切换动画**：
-     - **Windows 11 风格**：全套 WinUI 3 原生微圆角卡片、底部强调线输入框、同心圆滑块、Mica 云母及暗色模式窗口属性（通过 `dwmapi.dll`）。
-     - **Linux Ubuntu 风格**：Ubuntu GTK4 / Libadwaita / Yaru 原生组件与官方图标库。
-     - **主题模式**：支持跟随系统（检测注册表 `AppsUseLightTheme`）、固定浅色、固定深色，并在切换时触发 380 ms 径向波纹与 60 FPS 色彩插值。
+> **致 Windows 平台的 AI 助手**：
+> 1. **禁止修改功能代码**：`EdgeEcho v0.5.0` 的全部核心与桌面端功能（`mems_driver` 29 通道物理工程量纲校准、STFT 时频瀑布图、时频联动双子图、WSOLA 倍速保调音频、零相位 Butterworth 数字带通滤波听诊、Windows 11 Fluent / WinUI 3 官方组件风格与平滑波纹主题动画）**已在 Linux 主开发环境全部开发并验证完毕**。
+> 2. **源码指纹保护机制**：本项目内置严格的源码指纹校验（`tools/validation_support.py` 会计算 `CMakeLists.txt`、`include/`、`src/`、`app/`、`tools/`、`tests/` 的 SHA-256 指纹并嵌入可执行文件）。**请勿修改上述目录下的任何源码文件**，否则会导致构建产物与验证报告的 `source-sha256` 不一致。
+> 3. **你的唯一核心任务**：在 Windows 环境中关联本机的 **MSVC 2022 + Qt 6 (msvc2022_64)** 图形渲染引擎，编译出带完整图形界面的 `edgeecho.exe`，使用 `tools/package_windows.ps1` 打包生成 **`dist/EdgeEcho-0.5.0-windows-x86_64.zip`**，并将其上传到 GitHub 仓库 `kernova-789/EdgeEcho` 的 **`v0.5.0` Release** 中。
 
 ---
 
-## 二、Windows 平台 AI 首要任务：构建与打包完整桌面 GUI 发行包
+## 第一步：定位本机 Visual Studio 2022 (MSVC) 与 Qt 6 路径
 
-### 1. 现状与问题说明
-在当前的 Release v0.4.0 中，用户下载 `edgeecho_cli-0.4.0-windows-x86_64.exe` 双击后黑框一闪而过，原因是该文件是**仅供终端调用的无界面命令行工具（CLI，4.3 MB）**。
-**首要任务**是在 Windows 真实环境下编译并打包出**包含图形界面 `edgeecho.exe` 与全部 Qt6 运行时库的 `EdgeEcho-0.4.0-windows-x86_64.zip`（约 35~40 MB）**，并将其补充发布到 GitHub Release 中。
-
-### 2. 本地已预先做好的 Windows 兼容性修复
-我们已经在 `main` 分支代码中加入了 Windows 专用的底层适配：
-1. **`CMakeLists.txt`**：已配置 `if(WIN32) target_link_libraries(edgeecho PRIVATE advapi32 dwmapi) endif()`，确保读取深浅色注册表与 `dwmapi` 调用顺利链接。
-2. **`app/main.cpp`**：已加入 `initWindowsConsoleOutput()`（基于 `AttachConsole` / `_open_osfhandle`），确保 GUI 程序在命令行或测试管道中执行 `--version`、`--smoke` 时标准输出（stdout）不会被 Windows GUI 子系统丢弃。
-
-### 3. Windows 平台原生构建与测试步骤（PowerShell）
-
-请在装有 **Visual Studio 2022 (MSVC C++)** 与 **Qt 6 (建议 6.5 ~ 6.8，msvc2022_64)** 的 Windows 环境中打开「适用于 VS 2022 的 x64 本机工具命令提示」或开发者 PowerShell：
+在 Windows PowerShell 中执行以下探测脚本，自动定位本机安装的 Qt 6 (`msvc*_64`) 与 Visual Studio CMake/MSVC 环境：
 
 ```powershell
-# 1. 克隆或拉取最新代码
-git clone https://github.com/kernova-789/EdgeEcho.git
-cd EdgeEcho
+# 1. 自动搜索常见位置的 Qt 6 (msvc*_64) 目录
+$QtCandidates = @(
+    "C:\Qt", "D:\Qt", "$env:USERPROFILE\Qt", "$env:SystemDrive\Qt"
+) | Where-Object { Test-Path $_ } | ForEach-Object {
+    Get-ChildItem -Path $_ -Directory -Depth 2 -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "msvc*64*" -and (Test-Path (Join-Path $_.FullName "bin\windeployqt.exe")) }
+} | Sort-Object FullName -Descending
 
-# 2. CMake 配置（替换为你机器上的 Qt6 安装路径）
-cmake -S . -B build -DCMAKE_PREFIX_PATH="C:/Qt/6.8.2/msvc2022_64" -DCMAKE_BUILD_TYPE=Release
+if ($QtCandidates.Count -eq 0) {
+    Write-Error "未在默认路径找到 Qt 6 (msvc*_64)，请手动将 `$QtPrefix` 设置为包含 bin/windeployqt.exe 的目录"
+} else {
+    $QtPrefix = $QtCandidates[0].FullName
+    Write-Host "已定位 Qt 6 目录: $QtPrefix" -ForegroundColor Green
+}
 
-# 3. 编译核心、CLI、GUI 及单元测试
-cmake --build build --config Release --parallel
-
-# 4. 执行全量自动化测试（含 GUI 离线冒烟与交互测试）
-ctest --test-dir build -C Release --output-on-failure
-
-# 5. 执行官方标准 Windows 打包脚本（自动调用 windeployqt 收集全部依赖 DLL 与插件）
-powershell -ExecutionPolicy Bypass -File .\tools\package_windows.ps1 -BuildDir build -Output dist
-
-# 6. 验证打包产物完整性与离线独立运行能力
-python tools\validate_package.py --package dist\EdgeEcho-0.4.0-windows-x86_64 --validation-report docs\evidence\current-validation.json
+# 2. 将 Qt6 bin 目录加入当前会话 PATH（关键：package_windows.ps1 依赖 windeployqt.exe 在 PATH 中）
+$env:PATH = "$QtPrefix\bin;$env:PATH"
+Get-Command windeployqt.exe
 ```
 
-打包成功后，将在 `dist/` 目录下生成：
-- **`dist/EdgeEcho-0.4.0-windows-x86_64.zip`**
-解压后直接双击 `bin\edgeecho.exe`，应直接展示出 Windows 11 Fluent 风格的桌面主窗口，且无多余控制台黑框弹出。
+---
 
-### 4. 补充上传至 GitHub Release
-将生成的 `EdgeEcho-0.4.0-windows-x86_64.zip` 上传至 GitHub 仓库：
-`https://github.com/kernova-789/EdgeEcho/releases/tag/v0.4.0`
+## 第二步：配置、编译与全量自动化测试（Release 模式）
+
+> **注意**：请确保在已加载 MSVC x64 环境变量的终端（如 `Developer PowerShell for VS 2022`）中运行，或通过 `VsDevCmd.bat -arch=x64` 初始化环境。
+
+在项目根目录 `EdgeEcho` 下依次执行：
+
+```powershell
+# 1. 清理旧的构建缓存（避免残留 Linux 构建产物冲突）
+if (Test-Path build) { Remove-Item build -Recurse -Force }
+if (Test-Path dist)  { Remove-Item dist  -Recurse -Force }
+
+# 2. CMake 配置（显式开启 GUI 构建并指定 Qt 6 路径）
+cmake -S . -B build -DEDGEECHO_BUILD_GUI=ON -DCMAKE_PREFIX_PATH="$QtPrefix" -DCMAKE_BUILD_TYPE=Release
+
+# 3. 编译核心库、命令行工具 (edgeecho_cli.exe)、图形界面主程序 (edgeecho.exe) 与全部测试
+cmake --build build --config Release --parallel 4
+
+# 4. 运行 CTest 全部 13 项自动化测试（含 GUI 离线渲染、交互回归、音频/FFT/STFT/量纲标定测试）
+ctest --test-dir build -C Release --output-on-failure
+```
 
 ---
 
-## 三、Windows 实机交互与视觉验收清单
+## 第三步：生成新鲜验证证据与打包 Windows 独立桌面运行包
 
-在 Windows 10/11 实机上运行时，请重点检验以下细节：
-1. **Windows 11 原生特效**：
-   - 窗口圆角与标题栏：在 Win11 下是否正确应用 `DWMWA_WINDOW_CORNER_PREFERENCE` 圆角和暗色标题栏。
-   - 系统主题跟随：在 Windows 设置中将系统切换为“深色”/“浅色”，软件在“跟随系统”模式下应在 1~2 秒内自动平滑淡入新主题。
-2. **音频听诊**：
-   - 打开测试数据库（`build/test-data/demo.db`），选中声音通道（`demo-sound`），点击播放或「试听当前窗口」，验证 Windows 声卡是否有正常声音输出，电平表是否同步跳动。
-3. **高分屏（HiDPI）**：
-   - 在 125%、150% 或 200% 缩放下，Win11 微圆角、滑块、图标和波形是否清晰无虚焦。
+项目的打包验证脚本要求提供当前平台最新生成的 `current-validation.json`。请按顺序执行以下三条命令：
+
+```powershell
+# 1. 运行官方验证器，生成匹配当前源码 SHA-256 的验证报告
+python tools/validate_current.py --profiles release --parallel 4 --report docs/evidence/current-validation.json
+
+# 2. 运行官方 Windows 打包脚本（自动调用 windeployqt 收集所有 Qt6 GUI/Widgets 渲染引擎 DLL、平台插件与编译器运行时）
+powershell -ExecutionPolicy Bypass -File .\tools\package_windows.ps1 -BuildDir build -Output dist -Configuration Release
+
+# 3. 验证生成的独立运行包（自动在含中文与空格的隔离目录中测试 edgeecho.exe 与 edgeecho_cli.exe）
+python tools/validate_package.py --package dist/EdgeEcho-0.5.0-windows-x86_64 --validation-report docs/evidence/current-validation.json
+```
+
+成功后，你将得到完整的 Windows 桌面版压缩包：
+- **文件路径**：`dist\EdgeEcho-0.5.0-windows-x86_64.zip`
+- **包内结构**：
+  - `bin\edgeecho.exe`：**带 Windows 11 Fluent 图形界面的桌面端主程序**（已配置 `WIN32_EXECUTABLE TRUE`，双击直接打开 GUI 窗口，绝不会出现黑框闪退）。
+  - `bin\edgeecho_cli.exe`：命令行工具。
+  - `bin\Qt6Core.dll`、`bin\Qt6Gui.dll`、`bin\Qt6Widgets.dll`、`bin\platforms\qwindows.dll`、`bin\styles\qmodernwindowsstyle.dll` 等完整 Qt 图形引擎运行时依赖。
 
 ---
 
-## 四、后续版本（v0.5.0+）开发路线图
+## 第四步：上传至 GitHub 仓库与 Release `v0.5.0`
 
-Windows 桌面包交付并验收完毕后，即可根据用户需求开展下一步开发：
+需要将构建出的 **`dist\EdgeEcho-0.5.0-windows-x86_64.zip`** 上传至 GitHub 仓库 `https://github.com/kernova-789/EdgeEcho` 的 `v0.5.0` Release 页面（若代码有未推送提交，也请一并 `git push origin main --tags`）。
 
-1. **优先级 1：物理工程量纲校准**
-   - 振动与声音当前保存为 ADC 原始整型 `count`，需读取 `metadata` 中的灵敏度/增益参数，支持界面一键切换为物理单位（$\text{m/s}^2$、$g$、$\text{Pa}$、$\text{dB SPL}$）。
-   - 为 `iio-le-72-v1` 的 29 个特征通道提供完整的中文工程语义标签。
-2. **优先级 2：多子图联动（Linked Subplots）与 STFT 时频瀑布图**
-   - 支持上下排列 2~4 个子图（共享时间轴与播放光标），同时对比振动、声音及 STFT 频谱瀑布图（Spectrogram 热力图）。
-3. **优先级 3：音频变速不变调（WSOLA）与带通滤波听诊**
-   - 改变回放倍速时保持音频音调不变；支持在频谱图上框选滤波频段，实时听诊轴承/齿轮故障特征频。
+### 方式 A：如果 Windows 机器已安装并登录 GitHub CLI (`gh`)
+
+```powershell
+# 若 Release v0.5.0 已存在，直接补充上传 Windows 桌面版压缩包（--clobber 允许覆盖同名资产）
+gh release upload v0.5.0 dist\EdgeEcho-0.5.0-windows-x86_64.zip --repo kernova-789/EdgeEcho --clobber
+```
+
+*(注：若远端尚未创建 `v0.5.0` Release，可执行：`gh release create v0.5.0 dist\EdgeEcho-0.5.0-windows-x86_64.zip --repo kernova-789/EdgeEcho --title "EdgeEcho v0.5.0" --generate-notes`)*
+
+### 方式 B：如果未安装 `gh`，直接使用 PowerShell 调用 GitHub REST API 上传
+
+无需安装任何额外软件，只需设置 GitHub Personal Access Token (`$env:GITHUB_TOKEN`) 并运行以下原生 PowerShell 脚本即可完成上传：
+
+```powershell
+$Token = $env:GITHUB_TOKEN  # 请替换为具有 repo 权限的 GitHub Token
+$Repo  = "kernova-789/EdgeEcho"
+$Tag   = "v0.5.0"
+$ZipPath = Resolve-Path "dist\EdgeEcho-0.5.0-windows-x86_64.zip"
+$AssetName = "EdgeEcho-0.5.0-windows-x86_64.zip"
+
+$Headers = @{
+    "Authorization" = "Bearer $Token"
+    "Accept"        = "application/vnd.github+json"
+    "X-GitHub-Api-Version" = "2022-11-28"
+}
+
+# 1. 查询或创建 v0.5.0 Release
+try {
+    $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/tags/$Tag" -Headers $Headers -Method Get
+} catch {
+    $Body = @{ tag_name = $Tag; name = "EdgeEcho v0.5.0"; draft = $false; prerelease = $false } | ConvertTo-Json
+    $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" -Headers $Headers -Method Post -Body $Body -ContentType "application/json"
+}
+
+# 2. 若已存在同名旧资产则先删除
+foreach ($Asset in $Release.assets) {
+    if ($Asset.name -eq $AssetName) {
+        Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/assets/$($Asset.id)" -Headers $Headers -Method Delete
+    }
+}
+
+# 3. 上传 EdgeEcho-0.5.0-windows-x86_64.zip
+$UploadUrl = ($Release.upload_url -replace '\{\?name,label\}', '') + "?name=$AssetName"
+$Uploaded = Invoke-RestMethod -Uri $UploadUrl -Headers $Headers -Method Post -InFile $ZipPath -ContentType "application/zip"
+Write-Host "上传成功！下载链接: $($Uploaded.browser_download_url)" -ForegroundColor Green
+```

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(EdgeEcho VERSION 0.4.0 LANGUAGES C CXX)
+project(EdgeEcho VERSION 0.5.0 LANGUAGES C CXX)
 
 option(EDGEECHO_BUILD_GUI "Build the Qt 6 desktop player" ON)
 option(EDGEECHO_SANITIZERS "Enable address and undefined-behavior sanitizers" OFF)

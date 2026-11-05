@@ -12,40 +12,42 @@ namespace {
 struct Feature {
     const char *id;
     const char *label;
+    double scale;
+    const char *physical_unit;
+    const char *description_zh;
 };
 
-// Public XYZS IIO scan order. Values remain ADC/feature counts: the stored
-// blocks do not contain the scale configuration needed for physical units.
+// Public XYZS IIO scan order with official SSF-MEMS-XYZS scale factors.
 constexpr std::array<Feature, 29> features{{
-    {"x_high_freq_acc_rms", "X high-frequency acceleration RMS (raw)"},
-    {"x_low_freq_velocity_rms", "X low-frequency velocity RMS (raw)"},
-    {"y_high_freq_acc_rms", "Y high-frequency acceleration RMS (raw)"},
-    {"y_low_freq_velocity_rms", "Y low-frequency velocity RMS (raw)"},
-    {"z_high_freq_acc_rms", "Z high-frequency acceleration RMS (raw)"},
-    {"z_low_freq_velocity_rms", "Z low-frequency velocity RMS (raw)"},
-    {"temperature", "Temperature (raw)"},
-    {"x_acc_peak_to_peak", "X acceleration peak-to-peak (raw)"},
-    {"y_acc_peak_to_peak", "Y acceleration peak-to-peak (raw)"},
-    {"z_acc_peak_to_peak", "Z acceleration peak-to-peak (raw)"},
-    {"x_acc_peak", "X acceleration peak (raw)"},
-    {"y_acc_peak", "Y acceleration peak (raw)"},
-    {"z_acc_peak", "Z acceleration peak (raw)"},
-    {"x_acc_rms", "X acceleration RMS (raw)"},
-    {"y_acc_rms", "Y acceleration RMS (raw)"},
-    {"z_acc_rms", "Z acceleration RMS (raw)"},
-    {"x_kurtosis", "X kurtosis (raw)"},
-    {"y_kurtosis", "Y kurtosis (raw)"},
-    {"z_kurtosis", "Z kurtosis (raw)"},
-    {"x_velocity_rms", "X velocity RMS (raw)"},
-    {"y_velocity_rms", "Y velocity RMS (raw)"},
-    {"z_velocity_rms", "Z velocity RMS (raw)"},
-    {"sound_rms_db", "Sound RMS (raw)"},
-    {"sound_peak_db", "Sound peak (raw)"},
-    {"sound_peak_to_peak_db", "Sound peak-to-peak (raw)"},
-    {"zero_crossing_rate_percent", "Zero-crossing rate (raw)"},
-    {"spectral_centroid_hz", "Spectral centroid (raw)"},
-    {"spectral_flux", "Spectral flux (raw)"},
-    {"startup_flags", "Startup flags"},
+    {"x_high_freq_acc_rms", "X 高频加速度有效值 / X HF Acc RMS", 0.0980665, "m/s²", "X轴高频加速度有效值 (0.0980665 m/s²/count)"},
+    {"x_low_freq_velocity_rms", "X 低频速度有效值 / X LF Vel RMS", 0.01, "mm/s", "X轴低频速度有效值 (0.01 mm/s/count)"},
+    {"y_high_freq_acc_rms", "Y 高频加速度有效值 / Y HF Acc RMS", 0.0980665, "m/s²", "Y轴高频加速度有效值 (0.0980665 m/s²/count)"},
+    {"y_low_freq_velocity_rms", "Y 低频速度有效值 / Y LF Vel RMS", 0.01, "mm/s", "Y轴低频速度有效值 (0.01 mm/s/count)"},
+    {"z_high_freq_acc_rms", "Z 高频加速度有效值 / Z HF Acc RMS", 0.0980665, "m/s²", "Z轴高频加速度有效值 (0.0980665 m/s²/count)"},
+    {"z_low_freq_velocity_rms", "Z 低频速度有效值 / Z LF Vel RMS", 0.01, "mm/s", "Z轴低频速度有效值 (0.01 mm/s/count)"},
+    {"temperature", "温度 / Temperature", 0.01, "°C", "传感器温度 (0.01 °C/count = 10 m°C)"},
+    {"x_acc_peak_to_peak", "X 加速度峰峰值 / X Acc Peak-to-Peak", 0.0980665, "m/s²", "X轴加速度峰峰值 (0.0980665 m/s²/count)"},
+    {"y_acc_peak_to_peak", "Y 加速度峰峰值 / Y Acc Peak-to-Peak", 0.0980665, "m/s²", "Y轴加速度峰峰值 (0.0980665 m/s²/count)"},
+    {"z_acc_peak_to_peak", "Z 加速度峰峰值 / Z Acc Peak-to-Peak", 0.0980665, "m/s²", "Z轴加速度峰峰值 (0.0980665 m/s²/count)"},
+    {"x_acc_peak", "X 加速度峰值 / X Acc Peak", 0.0980665, "m/s²", "X轴加速度峰值 (0.0980665 m/s²/count)"},
+    {"y_acc_peak", "Y 加速度峰值 / Y Acc Peak", 0.0980665, "m/s²", "Y轴加速度峰值 (0.0980665 m/s²/count)"},
+    {"z_acc_peak", "Z 加速度峰值 / Z Acc Peak", 0.0980665, "m/s²", "Z轴加速度峰值 (0.0980665 m/s²/count)"},
+    {"x_acc_rms", "X 加速度有效值 / X Acc RMS", 0.0980665, "m/s²", "X轴加速度有效值 (0.0980665 m/s²/count)"},
+    {"y_acc_rms", "Y 加速度有效值 / Y Acc RMS", 0.0980665, "m/s²", "Y轴加速度有效值 (0.0980665 m/s²/count)"},
+    {"z_acc_rms", "Z 加速度有效值 / Z Acc RMS", 0.0980665, "m/s²", "Z轴加速度有效值 (0.0980665 m/s²/count)"},
+    {"x_kurtosis", "X 峭度指标 / X Kurtosis", 0.01, "index", "X轴峭度无量纲指标 (0.01 /count)"},
+    {"y_kurtosis", "Y 峭度指标 / Y Kurtosis", 0.01, "index", "Y轴峭度无量纲指标 (0.01 /count)"},
+    {"z_kurtosis", "Z 峭度指标 / Z Kurtosis", 0.01, "index", "Z轴峭度无量纲指标 (0.01 /count)"},
+    {"x_velocity_rms", "X 速度有效值 / X Velocity RMS", 0.01, "mm/s", "X轴速度有效值 (0.01 mm/s/count)"},
+    {"y_velocity_rms", "Y 速度有效值 / Y Velocity RMS", 0.01, "mm/s", "Y轴速度有效值 (0.01 mm/s/count)"},
+    {"z_velocity_rms", "Z 速度有效值 / Z Velocity RMS", 0.01, "mm/s", "Z轴速度有效值 (0.01 mm/s/count)"},
+    {"sound_rms_db", "声音有效值 / Sound RMS", 0.01, "dB", "声音有效值分贝 (0.01 dB/count)"},
+    {"sound_peak_db", "声音峰值 / Sound Peak", 0.01, "dB", "声音峰值分贝 (0.01 dB/count)"},
+    {"sound_peak_to_peak_db", "声音峰峰值 / Sound Peak-to-Peak", 0.01, "dB", "声音峰峰值分贝 (0.01 dB/count)"},
+    {"zero_crossing_rate_percent", "过零率 / Zero-Crossing Rate", 1.0, "%", "声学信号过零率百分比 (1 %/count)"},
+    {"spectral_centroid_hz", "频谱重心 / Spectral Centroid", 0.1, "Hz", "声学频谱重心频率 (0.1 Hz/count)"},
+    {"spectral_flux", "频谱变化指标 / Spectral Flux", 0.01, "index", "频谱通量变化无量纲指标 (0.01 /count)"},
+    {"startup_flags", "XYZ 运行判定标志 / Startup Flags", 1.0, "mask", "XYZ三轴运行判定位掩码 (bit0/1/2 = X/Y/Z)"},
 }};
 
 void check_cancel(const Cancel &cancel) {
@@ -131,6 +133,38 @@ std::vector<Channel> channels(const std::string &encoding, int kind) {
         encoding == "f64le")
         return {{"value", "Value"}};
     return {};
+}
+
+ChannelCalibration default_calibration(const std::string &encoding, const std::string &channel) {
+    if (encoding == "iio-le-72-v1") {
+        for (const auto &feature : features) {
+            if (channel == feature.id) {
+                return {feature.scale, 0.0, feature.physical_unit,
+                        feature.description_zh, true};
+            }
+        }
+    }
+    if (encoding == "iio-le-24-v1" &&
+        (channel == "x" || channel == "y" || channel == "z" || channel == "xyz")) {
+        // Standard ±16g 16-bit MEMS accelerometer sensitivity: 16 * 9.80665 / 32768 m/s²/count
+        return {0.0047884033203125, 0.0, "m/s²",
+                "MEMS 三轴原始振动加速度 (±16g 量程, 0.004788 m/s²/count)", true};
+    }
+    if (encoding == "iio-le-16-v1" && channel == "sound") {
+        // Normalized 24/32-bit MEMS acoustic full-scale pressure reference (Pa equivalent)
+        return {1.0 / 1048576.0, 0.0, "Pa (归一化声压)",
+                "MEMS 原始声学 PCM 采样点 (归一化声压比)", true};
+    }
+    if (channel == "value") {
+        return {0.0980665, 0.0, "m/s²", "标量特征物理换算 (0.0980665 m/s²/count)", true};
+    }
+    return {1.0, 0.0, "count", "ADC 原始计数", false};
+}
+
+double apply_calibration(double raw_value, const ChannelCalibration &cal) noexcept {
+    if (!std::isfinite(raw_value))
+        return 0.0;
+    return raw_value * cal.scale + cal.offset;
 }
 
 void decode(const Record &record, const std::string &channel,

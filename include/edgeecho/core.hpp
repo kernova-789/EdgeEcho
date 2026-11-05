@@ -89,6 +89,8 @@ struct AudioOptions {
     double gain = 1.0;                // Linear gain multiplier in [0, 1000].
     bool remove_dc = true;
     bool normalize = true;
+    double low_cut_hz = 0.0;          // > 0 applies 2nd-order Butterworth high-pass filter.
+    double high_cut_hz = 0.0;         // > 0 applies 2nd-order Butterworth low-pass filter.
     std::chrono::milliseconds timeout{5 * 60 * 1000};
 };
 struct AudioClip {
@@ -109,9 +111,32 @@ struct Spectrum {
     double dominant_magnitude = 0.0;
     std::size_t samples_used = 0;
 };
+struct Spectrogram {
+    Range range{0, 0};
+    double sample_rate_hz = 0.0;
+    double max_frequency_hz = 0.0;
+    std::size_t time_bins = 0;
+    std::size_t freq_bins = 0;
+    double min_db = -80.0;
+    double max_db = 0.0;
+    double dominant_frequency_hz = 0.0;
+    double dominant_time_ratio = 0.0;
+    std::vector<double> magnitudes_db; // row-major: time_bins * freq_bins (t * freq_bins + f)
+    std::size_t samples_used = 0;
+};
+struct ChannelCalibration {
+    double scale = 1.0;
+    double offset = 0.0;
+    std::string physical_unit;
+    std::string description_zh;
+    bool has_physical_unit = false;
+};
 struct Channel { std::string id, label; };
 // Supported channels for a known encoding. Empty means opaque, never guessed.
 std::vector<Channel> channels(const std::string &encoding, int kind = 2);
+// Returns standard SSF-MEMS-XYZS physical unit calibration for a known encoding/channel.
+ChannelCalibration default_calibration(const std::string &encoding, const std::string &channel);
+double apply_calibration(double raw_value, const ChannelCalibration &cal) noexcept;
 // Validates layout/rate and streams finite values (non-finite values become gaps).
 // index -> estimated UTC timestamp; feature scans use the record timestamp.
 void decode(const Record &, const std::string &channel,
@@ -119,8 +144,13 @@ void decode(const Record &, const std::string &channel,
 std::vector<std::pair<std::string, std::string>> unpack_metadata(const std::string &);
 std::string quality_text(std::uint32_t);
 std::vector<std::uint8_t> encode_wav(const AudioClip &);
+std::vector<double> filter_bandpass(const std::vector<double> &samples, double sample_rate_hz,
+                                    double low_cut_hz, double high_cut_hz);
 Spectrum compute_spectrum(const std::vector<double> &samples, double sample_rate_hz,
                           std::size_t max_bins = 2048);
+Spectrogram compute_spectrogram(const std::vector<double> &samples, double sample_rate_hz,
+                                Range range = {0, 0}, std::size_t time_bins = 64,
+                                std::size_t freq_bins = 64);
 
 // A Database belongs to one worker thread. Only closed/checkpointed offline input
 // is accepted, allowing immutable read-only access without source WAL/SHM writes.
@@ -152,6 +182,9 @@ class Database {
     // Computes a Hann-windowed single-sided FFT magnitude spectrum in [start,end).
     Spectrum spectrum(const Filter &, Range, const std::string &channel,
                       std::size_t max_bins = 2048);
+    // Computes a Hann-windowed Short-Time Fourier Transform (STFT) spectrogram in [start,end).
+    Spectrogram spectrogram(const Filter &, Range, const std::string &channel,
+                            std::size_t time_bins = 64, std::size_t freq_bins = 64);
     // Selection is ts in [start,end), not overlapping waveform blocks.
     std::uint64_t export_csv(const std::filesystem::path &, const Filter &, Range,
                              ExportOptions = {});
@@ -178,6 +211,8 @@ class AudioPlayer {
     void seek(Time timestamp_us);
     void set_volume(double volume); // 0.0 .. 1.0 inclusive.
     double volume() const noexcept;
+    void set_playback_speed(double speed); // 0.25 .. 4.0 pitch-preserving WSOLA time-stretch.
+    double playback_speed() const noexcept;
     void set_muted(bool muted) noexcept;
     bool muted() const noexcept;
     bool is_playing() const noexcept;
