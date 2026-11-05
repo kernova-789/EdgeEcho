@@ -1,0 +1,56 @@
+{
+  "version": "0.3.0",
+  "build_id": "source-sha256:225461afb282f90f81a34589336e986fc2aea459023a24db7fcc79843624c05a",
+  "scope": "One offline connection, repeated queries, warm cache uncontrolled; query latency excludes GUI paint and process startup",
+  "benchmarks": {
+    "waveform_8192000": {
+      "runs": 100,
+      "result_items": 3000,
+      "p50_ms": 638.768345,
+      "p95_ms": 674.077984,
+      "max_ms": 686.837155
+    },
+    "scalar_200000": {
+      "runs": 100,
+      "result_items": 4177,
+      "p50_ms": 722.168099,
+      "p95_ms": 760.198286,
+      "max_ms": 764.134325
+    },
+    "scalar_tail_second": {
+      "runs": 100,
+      "result_items": 100,
+      "p50_ms": 0.66012,
+      "p95_ms": 1.036397,
+      "max_ms": 1.265958
+    },
+    "xyz_10_seconds": {
+      "runs": 100,
+      "result_items": 9000,
+      "p50_ms": 57.051045,
+      "p95_ms": 64.462935,
+      "max_ms": 66.420312
+    },
+    "probe_10_seconds": {
+      "runs": 100,
+      "result_items": 1,
+      "p50_ms": 27.98161,
+      "p95_ms": 31.04809,
+      "max_ms": 40.088267
+    }
+  },
+  "passed": true,
+  "host": "Linux-7.0.0-38-generic-x86_64-with-glibc2.39",
+  "cpu_model": "AMD Ryzen 5 4600U with Radeon Graphics",
+  "database_bytes": 248623104,
+  "database_sha256_unchanged": "4946e2a9557c8be757e41e9d7a4f5352fc8d81acf143a84efd7209887830e87c",
+  "source_unchanged": true,
+  "binary_sha256": "384ae21176bd7d25760138665dcdd688d57c576900831be602aeba4d6c08c228",
+  "resource": {
+    "max_rss_kib": 31412,
+    "process_seconds": 144.77,
+    "exit_code": 0
+  },
+  "wall_seconds": 145.02391879700008,
+  "target_note": "Core-query latency excludes GUI painting/startup; no cold-cache, Windows runtime or eight-hour-soak acceptance."
+}

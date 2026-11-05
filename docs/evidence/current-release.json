@@ -1,0 +1,17 @@
+{
+  "version": "0.3.0",
+  "source_build_id": "source-sha256:225461afb282f90f81a34589336e986fc2aea459023a24db7fcc79843624c05a",
+  "linux_archive": "dist-linux/EdgeEcho-0.3.0-linux-x86_64.tar.gz",
+  "archive_sha256": "2428e230bc06c183400ca1aa1dfe6aa80156e62fdedd567f0246e8b11d3739d6",
+  "archive_bytes": 32328070,
+  "linux_package_relocation_verified": true,
+  "windows_native_runtime_verified": false,
+  "real_sensor_capture_verified": false,
+  "eight_hour_soak_verified": false,
+  "validation_reports": [
+    "current-validation.json",
+    "current-performance.json",
+    "current-compatibility.json",
+    "current-package.json"
+  ]
+}

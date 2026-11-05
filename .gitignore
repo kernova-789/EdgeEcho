@@ -1,0 +1,14 @@
+/build*/
+/.deps/
+/.cache/
+/.local/
+/demo/
+*.db
+*.db-wal
+*.db-shm
+*.csv
+*.png
+!docs/screenshots/*.png
+__pycache__/
+
+/dist*/

@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "records": 80,
+  "series": 4,
+  "exported": 80,
+  "plot": {
+    "records_scanned": 20,
+    "samples_decoded": 20,
+    "quality_skipped": 0,
+    "points": 20,
+    "elapsed_ms": 0.264403,
+    "estimated_time": false
+  },
+  "source_sha256_unchanged": "e60e056f9c39c3c48f222f5a10a55d1e4d9aaf5f71f4616c2b599fc985951b8d",
+  "invalid_argument_checks": 5
+}

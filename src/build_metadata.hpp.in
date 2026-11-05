@@ -1,0 +1,3 @@
+#pragma once
+#define EDGEECHO_VERSION "@PROJECT_VERSION@"
+#define EDGEECHO_BUILD_ID "source-sha256:@EDGEECHO_SOURCE_ID@"

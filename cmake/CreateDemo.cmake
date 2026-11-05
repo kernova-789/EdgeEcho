@@ -1,0 +1,8 @@
+if(NOT DEFINED CLI OR NOT DEFINED OUTPUT)
+    message(FATAL_ERROR "CLI and OUTPUT are required")
+endif()
+file(REMOVE "${OUTPUT}" "${OUTPUT}-wal" "${OUTPUT}-shm")
+execute_process(COMMAND "${CLI}" demo "${OUTPUT}" --records 2000 RESULT_VARIABLE result)
+if(NOT result EQUAL 0)
+    message(FATAL_ERROR "Demo creation failed: ${result}")
+endif()

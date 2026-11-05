@@ -1,0 +1,18 @@
+{
+  "unicode_offline": {
+    "returncode": 0,
+    "passed": true
+  },
+  "source_unchanged": {
+    "passed": true,
+    "sha256": "708e0444c33255e3fa71f2248451fdf84bc9699263e44ac9c4d547c3f7ba50db"
+  },
+  "reject_nonempty_wal": {
+    "returncode": 2,
+    "passed": true
+  },
+  "reject_invalid_database": {
+    "returncode": 2,
+    "passed": true
+  }
+}

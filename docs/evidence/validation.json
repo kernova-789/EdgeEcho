@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-29",
+  "timezone": "Asia/Shanghai",
+  "linux_release_ctest": {
+    "passed": 6,
+    "failed": 0
+  },
+  "linux_asan_ubsan_ctest": {
+    "passed": 5,
+    "failed": 0,
+    "detect_leaks": true
+  },
+  "gui_multi_window_smoke": {
+    "series": 4,
+    "windows": 9,
+    "passed": true
+  },
+  "original_writer_compatibility": {
+    "passed": true,
+    "storage_source": "/home/u-yoimiya/文档/EdgeSense Replay",
+    "reference_source_files_unchanged": 37,
+    "writer_generated_records": 3000,
+    "writer_generated_events": 1,
+    "payload_metadata_pagination_plot_verified": true,
+    "source_database_sha256": "8a12afb0b440091b24cb594e03994ed912a088c81abbad57d0eda251256fffe7",
+    "no_sidecars": true
+  },
+  "windows": {
+    "cross_compilation": "PE32+ x86-64 core, CLI, core tests",
+    "actual_runtime_verified": false,
+    "qt_gui_built": false
+  },
+  "source_sha256": {
+    "CMakeLists.txt": "bd62d8dd432a3fc314b70fac9fb4a6135e981780a934578f0ac896921d40300e",
+    "app/main.cpp": "5a2a4e30c46118e98f64ace0f28c629bbf30244ce1e8c72b1836bab0b867e9ca",
+    "include/edgeecho/core.hpp": "1136640f884a4c8a1ed533be4804173ca772e7d8f8ca0c87420ba5287dcf7b89",
+    "src/codec.cpp": "0fea94ef4796f1d2d63a5ce7125176fb2545c1a76f444babd7c2e6abad0e35b9",
+    "src/database.cpp": "bc23bf5dfc1a710404dddbc1f4f2b23265ae628aac35974526effdf95a585bdc",
+    "src/demo.cpp": "56f25586ad05aa1fa9a656e226580539153455a10f597a7ed5b89467b9742196",
+    "src/demo_schema.hpp": "6626b34b29d50670607f3697fd02fbc2352683eeadd5a2a9be92229357d68685",
+    "src/playback.cpp": "02d7722b07c6309a00f3c276247f27f99aec82c0c342df3c1f5707ebc19a2efc",
+    "tests/codec_playback.cpp": "c77aaaf47faca33bdff4c913aa3eb1fa88ed96d1352ff969df2b156fc6ade889",
+    "tests/compatibility/generate.cpp": "55023c425b6bd7e2154e0221d2e69969d4da8399dbf0b18de3db00786ab17e24",
+    "tests/database_tests.cpp": "ada9b5db984f0dfc98cff980a30d05fcaaddc622b354b0b332fc72c4557e6b56",
+    "tools/cli.cpp": "4cca89d6690dc2e54ca15c35fe4be6738c179bd2dddf34e9c6810b0ad9a01a9d"
+  },
+  "artifacts": {
+    "build/edgeecho": "3e07e7fd5f96aa97ff0e3af466c489627a6f76d6dd4ca299a42625174b9f7adc",
+    "build/edgeecho_cli": "4800db23e1fae3ad7a30a0d767cde38de1cc3493125f48c3e91fb713edfc2ede",
+    "build-windows/edgeecho_cli.exe": "aa06266b869535e33d2bf178c8b0b5267dd6cb30bb1db9a7aa685b403c682d7c"
+  },
+  "performance_report": "performance.json",
+  "gui_report": "gui.json",
+  "compatibility_report": "compatibility.json"
+}

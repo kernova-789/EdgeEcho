@@ -1,0 +1,185 @@
+{
+  "recorded_at": "2026-10-29T00:09:09.068157+08:00",
+  "timezone": "Asia/Shanghai",
+  "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.39",
+  "uname": [
+    "Linux",
+    "ubuntu-yoimiya",
+    "7.0.0-38-generic",
+    "#38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2",
+    "x86_64",
+    "x86_64"
+  ],
+  "cpu_model": "AMD Ryzen 5 4600U with Radeon Graphics",
+  "logical_cpus": 8,
+  "scope": "Linux host synthetic CLI performance; not physical-board or Windows validation",
+  "cache_note": "Sequential runs; OS filesystem cache uncontrolled; no cold-cache claim",
+  "rss_method": "GNU /usr/bin/time %M: peak resident set of each fresh CLI process, in KiB",
+  "timing_note": "CLI elapsed_ms measures Database::plot only; process timings include opening and overview",
+  "default_query_timeout_ms": 15000,
+  "binary": "build/edgeecho_cli",
+  "binary_sha256": "4800db23e1fae3ad7a30a0d767cde38de1cc3493125f48c3e91fb713edfc2ede",
+  "source_sha256": {
+    "src/database.cpp": "bc23bf5dfc1a710404dddbc1f4f2b23265ae628aac35974526effdf95a585bdc",
+    "src/codec.cpp": "0fea94ef4796f1d2d63a5ce7125176fb2545c1a76f444babd7c2e6abad0e35b9",
+    "src/playback.cpp": "02d7722b07c6309a00f3c276247f27f99aec82c0c342df3c1f5707ebc19a2efc",
+    "tools/cli.cpp": "4cca89d6690dc2e54ca15c35fe4be6738c179bd2dddf34e9c6810b0ad9a01a9d"
+  },
+  "workload": {
+    "scalar_records": 200000,
+    "added_waveform_blocks": 250,
+    "samples_per_block": 32768,
+    "waveform_points": 8192000,
+    "waveform_encoding": "iio-le-24-v1",
+    "sample_rate_hz": 32768,
+    "waveform_block_duration_us": 1000000,
+    "synthetic": true
+  },
+  "generation": {
+    "reused": true,
+    "note": "Existing runner-owned synthetic workload; not rewritten"
+  },
+  "database": {
+    "path": "build/performance/performance.db",
+    "size_bytes": 248623104,
+    "records": 200310,
+    "sqlite_integrity_check": "ok"
+  },
+  "benchmarks": {
+    "waveform-full": {
+      "command": [
+        "/home/u-yoimiya/文档/EdgeEcho/build/edgeecho_cli",
+        "benchmark",
+        "/home/u-yoimiya/文档/EdgeEcho/build/performance/performance.db",
+        "--sensor",
+        "performance-vibration",
+        "--type",
+        "vibration_iio_block",
+        "--unit",
+        "count",
+        "--start",
+        "1793145600000000",
+        "--end",
+        "1793145850000000",
+        "--channel",
+        "x",
+        "--buckets",
+        "1500"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "runner_wall_seconds": 0.8773114399991755,
+      "stdout": "build/performance/waveform-full.stdout.json",
+      "stderr": "build/performance/waveform-full.stderr.txt",
+      "process_resource": {
+        "max_rss_kib": 30608,
+        "process_elapsed_seconds": 0.83,
+        "user_seconds": 0.53,
+        "system_seconds": 0.29,
+        "exit_code": 0
+      },
+      "result": {
+        "records_scanned": 250,
+        "samples_decoded": 8192000,
+        "quality_skipped": 0,
+        "points": 3000,
+        "elapsed_ms": 509.540367,
+        "estimated_time": true
+      }
+    },
+    "scalar-full": {
+      "command": [
+        "/home/u-yoimiya/文档/EdgeEcho/build/edgeecho_cli",
+        "benchmark",
+        "/home/u-yoimiya/文档/EdgeEcho/build/performance/performance.db",
+        "--sensor",
+        "demo-vibration",
+        "--type",
+        "acceleration_rms",
+        "--unit",
+        "count",
+        "--start",
+        "1793145600000000",
+        "--end",
+        "1793147599990001",
+        "--channel",
+        "value",
+        "--buckets",
+        "1500"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "runner_wall_seconds": 0.8782894739997573,
+      "stdout": "build/performance/scalar-full.stdout.json",
+      "stderr": "build/performance/scalar-full.stderr.txt",
+      "process_resource": {
+        "max_rss_kib": 21784,
+        "process_elapsed_seconds": 0.85,
+        "user_seconds": 0.73,
+        "system_seconds": 0.11,
+        "exit_code": 0
+      },
+      "result": {
+        "records_scanned": 200000,
+        "samples_decoded": 199603,
+        "quality_skipped": 397,
+        "points": 4177,
+        "elapsed_ms": 549.576995,
+        "estimated_time": false
+      }
+    },
+    "scalar-tail-one-second": {
+      "command": [
+        "/home/u-yoimiya/文档/EdgeEcho/build/edgeecho_cli",
+        "benchmark",
+        "/home/u-yoimiya/文档/EdgeEcho/build/performance/performance.db",
+        "--sensor",
+        "demo-vibration",
+        "--type",
+        "acceleration_rms",
+        "--unit",
+        "count",
+        "--start",
+        "1793147598990001",
+        "--end",
+        "1793147599990001",
+        "--channel",
+        "value",
+        "--buckets",
+        "1500"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "runner_wall_seconds": 0.3195804440001666,
+      "stdout": "build/performance/scalar-tail-one-second.stdout.json",
+      "stderr": "build/performance/scalar-tail-one-second.stderr.txt",
+      "process_resource": {
+        "max_rss_kib": 21716,
+        "process_elapsed_seconds": 0.29,
+        "user_seconds": 0.21,
+        "system_seconds": 0.07,
+        "exit_code": 0
+      },
+      "result": {
+        "records_scanned": 100,
+        "samples_decoded": 100,
+        "quality_skipped": 0,
+        "points": 100,
+        "elapsed_ms": 0.786681,
+        "estimated_time": false
+      }
+    }
+  },
+  "source_safety": {
+    "database_sha256_before": "4946e2a9557c8be757e41e9d7a4f5352fc8d81acf143a84efd7209887830e87c",
+    "database_sha256_after": "4946e2a9557c8be757e41e9d7a4f5352fc8d81acf143a84efd7209887830e87c",
+    "sidecars_before": [],
+    "sidecars_after": [],
+    "unchanged": true
+  },
+  "binary_unchanged": true,
+  "source_unchanged": true,
+  "all_benchmarks_succeeded": true,
+  "waveform_count_matches": true,
+  "passed": true
+}

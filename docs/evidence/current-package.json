@@ -1,0 +1,34 @@
+{
+  "passed": true,
+  "source_unchanged": true,
+  "platform": "linux",
+  "version": "EdgeEcho 0.3.0\nBuild: source-sha256:225461afb282f90f81a34589336e986fc2aea459023a24db7fcc79843624c05a",
+  "build_id": "source-sha256:225461afb282f90f81a34589336e986fc2aea459023a24db7fcc79843624c05a",
+  "gui_identity_verified": true,
+  "relocated_package": "/home/u-yoimiya/文档/EdgeEcho/build/package-validation-current-final/中文 空格目录/EdgeEcho",
+  "removed_environment": [],
+  "source_sha256_unchanged": "3b0f868bd1acc39a6d534e4b79408228151e851188ecdee3b9478f1f01f44035",
+  "checks": {
+    "version": {
+      "exit_code": 0,
+      "passed": true
+    },
+    "gui_version": {
+      "exit_code": 0,
+      "passed": true
+    },
+    "create_demo": {
+      "exit_code": 0,
+      "passed": true
+    },
+    "inspect": {
+      "exit_code": 0,
+      "passed": true
+    },
+    "gui_smoke": {
+      "exit_code": 0,
+      "passed": true
+    }
+  },
+  "scope": "Relocated bundle on current host; not a clean OS image or an older ABI compatibility guarantee"
+}

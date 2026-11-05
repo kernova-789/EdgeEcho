@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "storage_source": "/home/u-yoimiya/\u6587\u6863/EdgeSense Replay",
+  "reference_source_files_unchanged": 37,
+  "writer_generated_records": 3000,
+  "writer_generated_events": 1,
+  "payload_metadata_pagination_plot_verified": true,
+  "source_database_sha256": "8a12afb0b440091b24cb594e03994ed912a088c81abbad57d0eda251256fffe7",
+  "no_sidecars": true
+}
