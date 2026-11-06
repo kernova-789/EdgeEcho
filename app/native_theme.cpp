@@ -12,6 +12,7 @@
 #include <QPainterPath>
 #include <QPixmap>
 #include <QProcess>
+#include <QRadialGradient>
 #include <QStyleFactory>
 #include <QStyleOption>
 #include <QStyleOptionButton>
@@ -345,6 +346,153 @@ QPalette buildPalette(const ThemeSpec &spec) {
     pal.setColor(QPalette::Disabled, QPalette::Base, spec.cardAltBg);
     pal.setColor(QPalette::Disabled, QPalette::Button, spec.cardAltBg);
     return pal;
+}
+
+QPixmap createAppLogoPixmap(int size) {
+    const int dim = std::clamp(size, 16, 1024);
+    QPixmap px(dim, dim);
+    px.fill(Qt::transparent);
+
+    QPainter p(&px);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    p.scale(static_cast<double>(dim) / 512.0, static_cast<double>(dim) / 512.0);
+
+    // 1. Base Rounded Squircle Card with Deep Sapphire-Titanium Gradient
+    QLinearGradient bgGrad(24.0, 24.0, 488.0, 488.0);
+    bgGrad.setColorAt(0.00, QColor("#0B1528"));
+    bgGrad.setColorAt(0.52, QColor("#102342"));
+    bgGrad.setColorAt(1.00, QColor("#091326"));
+    p.setPen(Qt::NoPen);
+    p.setBrush(bgGrad);
+    p.drawRoundedRect(QRectF(24.0, 24.0, 464.0, 464.0), 108.0, 108.0);
+
+    // 2. Ambient Center Radial Glow
+    QRadialGradient coreGlow(QPointF(256.0, 256.0), 210.0);
+    coreGlow.setColorAt(0.00, QColor(14, 165, 233, 84));
+    coreGlow.setColorAt(0.60, QColor(99, 102, 241, 28));
+    coreGlow.setColorAt(1.00, QColor(11, 21, 40, 0));
+    p.setBrush(coreGlow);
+    p.drawEllipse(QPointF(256.0, 256.0), 210.0, 210.0);
+
+    // 3. Outer Rim Metallic / Cyan-Coral Sheen
+    QLinearGradient rimGrad(24.0, 24.0, 488.0, 488.0);
+    rimGrad.setColorAt(0.00, QColor(56, 189, 248, 215));
+    rimGrad.setColorAt(0.50, QColor(2, 132, 199, 95));
+    rimGrad.setColorAt(1.00, QColor(249, 115, 22, 205));
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(rimGrad, 5.5));
+    p.drawRoundedRect(QRectF(27.0, 27.0, 458.0, 458.0), 105.0, 105.0);
+
+    // 4. Subtle Oscilloscope Grid
+    p.setPen(QPen(QColor(56, 189, 248, 26), 1.6));
+    p.drawLine(QPointF(68.0, 176.0), QPointF(444.0, 176.0));
+    p.drawLine(QPointF(68.0, 336.0), QPointF(444.0, 336.0));
+    p.drawLine(QPointF(176.0, 68.0), QPointF(176.0, 444.0));
+    p.drawLine(QPointF(336.0, 68.0), QPointF(336.0, 444.0));
+    p.setPen(QPen(QColor(56, 189, 248, 48), 1.6, Qt::DashLine));
+    p.drawLine(QPointF(68.0, 256.0), QPointF(444.0, 256.0));
+    p.drawLine(QPointF(256.0, 68.0), QPointF(256.0, 444.0));
+
+    // 5. Concentric Acoustic "Echo" Ripples
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(QColor(56, 189, 248, 120), 5.0, Qt::SolidLine, Qt::RoundCap));
+    p.drawArc(QRectF(126.0, 126.0, 260.0, 260.0), -46 * 16, 92 * 16);
+    p.drawArc(QRectF(126.0, 126.0, 260.0, 260.0), 134 * 16, 92 * 16);
+    p.setPen(QPen(QColor(255, 107, 53, 95), 4.0, Qt::DashLine, Qt::RoundCap));
+    p.drawArc(QRectF(82.0, 82.0, 348.0, 348.0), -42 * 16, 84 * 16);
+
+    // 6. Precision Hexagonal MEMS Sensor Frame
+    QPolygonF hex;
+    hex << QPointF(256.0, 74.0) << QPointF(414.0, 165.0) << QPointF(414.0, 347.0)
+        << QPointF(256.0, 438.0) << QPointF(98.0, 347.0) << QPointF(98.0, 165.0);
+    p.setBrush(QColor(13, 31, 60, 118));
+    p.setPen(QPen(rimGrad, 3.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.drawPolygon(hex);
+
+    // 7. STFT / FFT Spectrum Bars Inside Lower Half
+    QLinearGradient barGrad(0.0, 344.0, 0.0, 206.0);
+    barGrad.setColorAt(0.00, QColor(2, 132, 199, 45));
+    barGrad.setColorAt(0.65, QColor(56, 189, 248, 140));
+    barGrad.setColorAt(1.00, QColor(0, 245, 212, 225));
+    p.setPen(Qt::NoPen);
+    p.setBrush(barGrad);
+    static constexpr double barHeights[11] = {42, 60, 78, 52, 108, 138, 96, 68, 88, 56, 38};
+    for (int i = 0; i < 11; ++i) {
+        const double x = 136.0 + i * 22.0;
+        const double h = barHeights[i];
+        p.drawRoundedRect(QRectF(x, 344.0 - h, 12.0, h), 6.0, 6.0);
+    }
+
+    // 8. Secondary Harmonic Trace (XYZ Envelope)
+    QPainterPath env;
+    env.moveTo(82.0, 256.0);
+    env.cubicTo(118.0, 256.0, 134.0, 198.0, 162.0, 214.0);
+    env.cubicTo(190.0, 230.0, 206.0, 324.0, 232.0, 292.0);
+    env.cubicTo(258.0, 260.0, 274.0, 156.0, 302.0, 188.0);
+    env.cubicTo(330.0, 220.0, 348.0, 296.0, 378.0, 266.0);
+    env.cubicTo(402.0, 242.0, 414.0, 256.0, 430.0, 256.0);
+    p.setBrush(Qt::NoBrush);
+    p.setPen(QPen(QColor(255, 107, 53, 145), 4.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.drawPath(env);
+
+    // 9. Primary Luminous Acoustic & Vibration Waveform Pulse
+    QPainterPath wave;
+    wave.moveTo(76.0, 256.0);
+    wave.lineTo(122.0, 256.0);
+    wave.lineTo(146.0, 212.0);
+    wave.lineTo(172.0, 308.0);
+    wave.lineTo(202.0, 156.0);
+    wave.lineTo(234.0, 364.0);
+    wave.lineTo(268.0, 116.0);
+    wave.lineTo(302.0, 328.0);
+    wave.lineTo(332.0, 194.0);
+    wave.lineTo(358.0, 282.0);
+    wave.lineTo(382.0, 256.0);
+    wave.lineTo(436.0, 256.0);
+
+    QLinearGradient waveGrad(76.0, 256.0, 436.0, 256.0);
+    waveGrad.setColorAt(0.00, QColor("#00F5D4"));
+    waveGrad.setColorAt(0.48, QColor("#38BDF8"));
+    waveGrad.setColorAt(0.78, QColor("#6366F1"));
+    waveGrad.setColorAt(1.00, QColor("#FF6B35"));
+
+    // Outer glow halo
+    p.setPen(QPen(QColor(56, 189, 248, 72), 24.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.drawPath(wave);
+    // Crisp foreground waveform
+    p.setPen(QPen(waveGrad, 13.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.drawPath(wave);
+
+    // 10. Replay Playhead & Dominant Resonance Peak Beacon
+    p.setPen(QPen(QColor(255, 107, 53, 200), 2.8, Qt::DashLine));
+    p.drawLine(QPointF(268.0, 88.0), QPointF(268.0, 424.0));
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(255, 107, 53, 75));
+    p.drawEllipse(QPointF(268.0, 116.0), 17.0, 17.0);
+    p.setBrush(QColor("#FF6B35"));
+    p.setPen(QPen(QColor("#FFFFFF"), 2.6));
+    p.drawEllipse(QPointF(268.0, 116.0), 8.5, 8.5);
+
+    // 11. Top-Right Replay Triangle Badge
+    QPainterPath playBadge;
+    playBadge.moveTo(382.0, 108.0);
+    playBadge.lineTo(416.0, 127.0);
+    playBadge.lineTo(382.0, 146.0);
+    playBadge.closeSubpath();
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor("#00F5D4"));
+    p.drawPath(playBadge);
+
+    p.end();
+    return px;
+}
+
+QIcon createAppLogoIcon() {
+    QIcon icon;
+    for (const int sz : {16, 24, 32, 48, 64, 128, 256})
+        icon.addPixmap(createAppLogoPixmap(sz));
+    return icon;
 }
 
 QIcon createNativeIcon(NativeIconKind kind, const ThemeSpec &spec) {

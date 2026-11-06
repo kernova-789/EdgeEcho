@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QIcon>
 #include <QPalette>
+#include <QPixmap>
 #include <QProxyStyle>
 #include <QString>
 #include <QWidget>
@@ -76,6 +77,8 @@ ThemeSpec makeThemeSpec(PlatformFlavor flavor, bool dark);
 ThemeSpec interpolateThemeSpec(const ThemeSpec &from, const ThemeSpec &to, double t);
 QPalette buildPalette(const ThemeSpec &spec);
 
+QPixmap createAppLogoPixmap(int size = 256);
+QIcon createAppLogoIcon();
 QIcon createNativeIcon(NativeIconKind kind, const ThemeSpec &spec);
 void applyNativeWindowFrame(QWidget *window, const ThemeSpec &spec);
 

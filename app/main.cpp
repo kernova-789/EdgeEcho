@@ -101,6 +101,8 @@ using edgeecho::ui::ThemeSpec;
 using edgeecho::ui::TimeRangeEditor;
 using edgeecho::ui::applyNativeWindowFrame;
 using edgeecho::ui::buildPalette;
+using edgeecho::ui::createAppLogoIcon;
+using edgeecho::ui::createAppLogoPixmap;
 using edgeecho::ui::createNativeIcon;
 using edgeecho::ui::defaultPlatformFlavor;
 using edgeecho::ui::detectSystemDarkMode;
@@ -213,6 +215,7 @@ class MainWindow final : public QMainWindow {
         QApplication::setPalette(buildPalette(currentThemeSpec_));
 
         setWindowTitle(QStringLiteral("EdgeEcho %1 · 数据回放").arg(qs(version())));
+        setWindowIcon(createAppLogoIcon());
         resize(1280, 860);
         buildUi();
         applyNativeWindowFrame(this, currentThemeSpec_);
@@ -268,6 +271,12 @@ class MainWindow final : public QMainWindow {
         auto *toolbar = addToolBar(QStringLiteral("主工具栏"));
         toolbar->setMovable(false);
         toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+
+        auto *logoBadge = new QLabel;
+        logoBadge->setPixmap(createAppLogoPixmap(24));
+        logoBadge->setContentsMargins(4, 0, 6, 0);
+        logoBadge->setToolTip(QStringLiteral("EdgeEcho · 工业传感器离线回放与声振听诊分析平台"));
+        toolbar->addWidget(logoBadge);
 
         openAction_ = toolbar->addAction(QStringLiteral("打开数据库"));
         dirAction_ = toolbar->addAction(QStringLiteral("打开目录"));
@@ -338,12 +347,17 @@ class MainWindow final : public QMainWindow {
         connect(exportAction_, &QAction::triggered, this, [this] { exportCsv(); });
         connect(exportWavAction_, &QAction::triggered, this, [this] { exportWav(); });
         connect(helpAction_, &QAction::triggered, this, [this] {
-            QMessageBox::information(this, QStringLiteral("EdgeEcho 使用说明"), QStringLiteral(
+            QMessageBox box(this);
+            box.setWindowTitle(QStringLiteral("EdgeEcho 使用说明与关于"));
+            box.setIconPixmap(createAppLogoPixmap(72));
+            box.setText(QStringLiteral("<b>EdgeEcho %1</b> · 工业传感器离线回放与声振听诊分析软件").arg(qs(version())));
+            box.setInformativeText(QStringLiteral(
                 "1. 关闭数据写入程序后，打开已 checkpoint 的 replay.db 或存储目录。非空 WAL 会被拒绝，避免遗漏尚在 WAL 中的数据。\n"
-                "2. 左侧选择传感器 / 指标 / 单位，以及显示通道与视图模式（时域波形 / FFT 频谱分析）。\n"
-                "3. 播放、暂停、倍速、时间轴和曲线单击均可控制位置。查看声音（PCM）或波形数据时，支持实时同步发声播放、音量调节与导出标准 WAV 音频。\n"
+                "2. 左侧选择传感器 / 指标 / 单位，支持在 ADC 原始值与 mems_driver 29 通道物理工程量纲之间切换，并提供时域波形、FFT 频谱、STFT 时频瀑布图与时频联动双视图。\n"
+                "3. 播放、暂停、倍速、时间轴和曲线单击均可控制位置。查看声音（PCM）或波形数据时，支持 WSOLA 倍速保调实时发声、Butterworth 数字滤波听诊与标准 WAV 音频导出。\n"
                 "4. 支持浅色模式、深色模式及跟随系统自动切换，切换过程具备平滑色彩与波纹动画；Linux 使用 Ubuntu GNOME (GTK4/Yaru) 原生风格，Windows 使用 Windows 11 Fluent 风格。\n"
                 "5. CSV 导出整个所选区间中 timestamp 属于 [start,end) 的原始记录，BLOB 使用十六进制保留；WAV 导出所选窗口/区间的 16-bit PCM 音频。"));
+            box.exec();
         });
 
         connect(themeBox_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int idx) {
@@ -1695,7 +1709,8 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("EdgeEcho"));
     QApplication::setOrganizationName(QStringLiteral("EdgeEcho"));
-    QString input, smoke, screenshot, interaction, testOutput, osStyle, themeArg;
+    QApplication::setWindowIcon(createAppLogoIcon());
+    QString input, smoke, screenshot, interaction, testOutput, osStyle, themeArg, exportLogoDir;
     const auto args = app.arguments();
     for (int i = 1; i < args.size(); ++i) {
         if (args[i] == QStringLiteral("--smoke") && i + 1 < args.size()) smoke = args[++i];
@@ -1704,6 +1719,7 @@ int main(int argc, char **argv) {
         else if (args[i] == QStringLiteral("--screenshot") && i + 1 < args.size()) screenshot = args[++i];
         else if (args[i] == QStringLiteral("--os-style") && i + 1 < args.size()) osStyle = args[++i];
         else if (args[i] == QStringLiteral("--theme") && i + 1 < args.size()) themeArg = args[++i];
+        else if (args[i] == QStringLiteral("--export-logo") && i + 1 < args.size()) exportLogoDir = args[++i];
         else if (args[i] == QStringLiteral("--help") || args[i] == QStringLiteral("-h")) {
             std::cout << "Usage: edgeecho [database_or_directory] [--os-style linux|win11] [--theme system|light|dark]\n"
                          "       edgeecho --smoke DATABASE [--screenshot PNG] [--os-style linux|win11] [--theme system|light|dark]\n"
@@ -1711,6 +1727,17 @@ int main(int argc, char **argv) {
             return 0;
         } else if (input.isEmpty() && !args[i].startsWith(QLatin1Char('-'))) input = args[i];
         else { std::cerr << "Unknown or incomplete argument\n"; return 1; }
+    }
+    if (!exportLogoDir.isEmpty()) {
+        const auto dir = pathFromQt(exportLogoDir);
+        std::filesystem::create_directories(dir);
+        if (!createAppLogoPixmap(512).save(pathToQt(dir / "edgeecho-logo.png")) ||
+            !createAppLogoPixmap(256).save(pathToQt(dir / "edgeecho-icon-256.png")) ||
+            !createAppLogoPixmap(64).save(pathToQt(dir / "edgeecho-icon-64.png"))) {
+            std::cerr << "Failed to export logo PNGs\n";
+            return 1;
+        }
+        return 0;
     }
     try {
         if (!smoke.isEmpty() && !interaction.isEmpty()) throw Error("Choose either --smoke or --interaction-test");

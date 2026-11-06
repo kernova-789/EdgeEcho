@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo/edgeecho-logo.png" width="128" height="128" alt="EdgeEcho Logo" />
+</p>
+
 # EdgeEcho
 
 用于 EdgeSense Replay 数据库的 C++17 离线回放软件，包含 Qt 6 桌面界面与独立命令行。Windows、Linux 共用核心代码，使用标准库和 Qt，无 epoll 或 Linux 专用采集接口。
