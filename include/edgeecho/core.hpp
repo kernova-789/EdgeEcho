@@ -134,7 +134,8 @@ struct ChannelCalibration {
 struct Channel { std::string id, label; };
 // Supported channels for a known encoding. Empty means opaque, never guessed.
 std::vector<Channel> channels(const std::string &encoding, int kind = 2);
-// Returns standard SSF-MEMS-XYZS physical unit calibration for a known encoding/channel.
+bool is_waveform_encoding(const std::string &encoding) noexcept;
+// Returns standard sensor calibration for a known encoding/channel.
 ChannelCalibration default_calibration(const std::string &encoding, const std::string &channel);
 double apply_calibration(double raw_value, const ChannelCalibration &cal) noexcept;
 // Validates layout/rate and streams finite values (non-finite values become gaps).

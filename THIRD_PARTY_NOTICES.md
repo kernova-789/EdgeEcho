@@ -1,9 +1,9 @@
 # Third-party notices
 
-EdgeEcho includes SQLite 3.54.1 (`third_party/sqlite/sqlite3.c` and `sqlite3.h`),
-which is in the public domain. The files were copied, without editing, from the
-local EdgeSense Replay project's SQLite amalgamation. SQLite information and
-license statement: https://www.sqlite.org/copyright.html .
+EdgeEcho links EdgeSense Replay Core and the SQLite library supplied with it.
+Replay 1.2.0 supplies SQLite 3.54.1. EdgeEcho retains the public-domain
+`sqlite3.h` from that version for its archive projection and test fixtures.
+See the [SQLite license statement](https://www.sqlite.org/copyright.html).
 
 The optional desktop executable dynamically links Qt 6 Core, Gui, Widgets and
 Concurrent. Qt is not bundled in the source tree. Qt modules have their own

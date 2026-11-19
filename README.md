@@ -8,7 +8,7 @@
 
 先阅读的[开发报告](docs/DEVELOPMENT_REPORT.md)已在实现前形成；实际验证结果见 [VALIDATION.md](docs/VALIDATION.md)。
 
-当前版本为 **0.5.0**。历史复盘见 [首版开发评估](docs/DEVELOPMENT_REPORT_2026-10-29.md)；往期成果见 [第二阶段报告](docs/PHASE2_DEVELOPMENT_REPORT_2026-10-29.md)、[第三阶段报告](docs/PHASE3_DEVELOPMENT_REPORT_2026-10-29.md) 和 [第四阶段报告](docs/PHASE4_DEVELOPMENT_REPORT_2026-11-05.md)；Windows 平台原生编译交付说明见 [Windows AI 接力指南](docs/WINDOWS_AI_HANDOFF.md)。
+当前版本为 **0.6.0**。本次更新见 [0.6.0 发行说明](docs/releases/v0.6.0.md)。历史复盘见 [首版开发评估](docs/DEVELOPMENT_REPORT_2026-10-29.md)；往期成果见 [第二阶段报告](docs/PHASE2_DEVELOPMENT_REPORT_2026-10-29.md)、[第三阶段报告](docs/PHASE3_DEVELOPMENT_REPORT_2026-10-29.md) 和 [第四阶段报告](docs/PHASE4_DEVELOPMENT_REPORT_2026-11-05.md)；Windows 平台原生编译交付说明见 [Windows AI 接力指南](docs/WINDOWS_AI_HANDOFF.md)。
 
 ## 界面预览（Linux Ubuntu Yaru / GTK4 & Windows 11 Fluent / WinUI 3 · 浅色 / 深色模式）
 
@@ -67,7 +67,9 @@
 
 ## 从源码构建
 
-依赖：CMake ≥3.20、C++17 编译器；桌面版另需 Qt ≥6.2 Widgets、Concurrent。SQLite 3.54.1 已包含在源码中，不访问外部存储项目即可构建。
+构建需要 CMake ≥3.20、C++17 编译器和 EdgeSense Replay 1.2 兼容的 1.x Core。桌面版另需 Qt ≥6.2 的 Widgets 和 Concurrent。Replay Core 和它提供的 SQLite 静态链接进程序。
+
+CMake 优先使用 `-DREPLAY_SOURCE_DIR=/path/to/replay` 指定的源码。省略该选项时，先查找已安装的 `EdgeSenseReplay` CMake 包，再查找与 EdgeEcho 同级的 `EdgeSense Replay` 源码目录。已安装的包可以通过 `EdgeSenseReplay_DIR` 指向其配置文件目录。CI 固定使用 Replay 1.2.0 的提交 `3ddfc7c`，私有仓库检出可通过 `REPLAY_CHECKOUT_TOKEN` 授权。
 
 Linux，Qt 开发包可由发行版或 Qt 官方安装器提供：
 
@@ -83,7 +85,7 @@ ctest --test-dir build --output-on-failure
 Windows，安装 Visual Studio 2022 C++ 和相应 MSVC 版 Qt，使用开发者 PowerShell：
 
 ```powershell
-cmake -S . -B build -DCMAKE_PREFIX_PATH="C:/Qt/6.8.3/msvc2022_64"
+cmake -S . -B build -DCMAKE_PREFIX_PATH="C:/Qt/6.8.3/msvc2022_64" -DREPLAY_SOURCE_DIR="C:/src/EdgeSense Replay"
 cmake --build build --config Release --parallel 2
 ctest --test-dir build -C Release --output-on-failure
 windeployqt build/Release/edgeecho.exe
@@ -107,9 +109,9 @@ ctest --test-dir build-core --output-on-failure
 ./build/edgeecho_cli inspect demo.db
 ./build/edgeecho_cli records demo.db --sensor demo-vibration --type acceleration_rms --unit count
 ./build/edgeecho_cli export demo.db output.csv --sensor demo-vibration --type acceleration_rms --unit count
-./build/edgeecho_cli audio demo.db output.wav --sensor demo-sound --type sound_iio_block --unit count --channel sound --low-cut 50 --high-cut 250
-./build/edgeecho_cli spectrum demo.db --sensor demo-sound --type sound_iio_block --unit count --channel sound --bins 512
-./build/edgeecho_cli spectrogram demo.db --sensor demo-sound --type sound_iio_block --unit count --channel sound --time-bins 64 --freq-bins 64
+./build/edgeecho_cli audio demo.db output.wav --sensor demo-sound --type raw_sound_iio --unit count --channel sound --low-cut 50 --high-cut 250
+./build/edgeecho_cli spectrum demo.db --sensor demo-sound --type raw_sound_iio --unit count --channel sound --bins 512
+./build/edgeecho_cli spectrogram demo.db --sensor demo-sound --type raw_sound_iio --unit count --channel sound --time-bins 64 --freq-bins 64
 ./build/edgeecho_cli benchmark demo.db --sensor demo-vibration --type vibration_iio_block --unit count --channel x
 ```
 
@@ -117,7 +119,7 @@ ctest --test-dir build-core --output-on-failure
 
 ## 资源上限与开发接口
 
-默认单记录8 MiB、单页16 MiB/512条、单次曲线最多扫描25万记录/解码1000万个通道值、交互操作15秒；事件也限制总条数与总字节。XYZ共用一次数据库扫描，解码值和输出字节预算合并执行。导出默认总任务30分钟，各页数据库查询仍受交互预算限制。超限须缩短区间，或者由嵌入调用者通过 `Limits` 明确调整，不会静默截断成功结果。可用 `Cancel` 中止后台读取。显示点数通常不超过视口桶数的两倍，质量中断会增加少量边界点，过多中断也会明确报错。
+默认单记录 8 MiB，单页 16 MiB，原始记录表每页最多 512 条。每次曲线查询最多扫描 25 万条记录、解码 1000 万个通道值，交互操作限时 15 秒。事件查询限制总条数和总字节。XYZ 共用一次历史扫描，合并计算解码值和输出预算。导出默认总任务 30 分钟，各页查询仍受交互时限。超限时明确报错，可缩短区间或通过 `Limits` 调整。`Cancel` 可中止后台读取。显示点数通常不超过视口桶数的两倍，质量中断会增加边界点。
 
 接口见 `include/edgeecho/core.hpp`。`Database` 属于单个工作线程；`identity()`取得离线源身份，后续工作线程通过构造参数expected_source绑定同一个文件，克隆数据库即使ID/大小/mtime相同，路径被替换也会拒绝。Qt主线程只持有有界结果。`PlaybackClock` 是独立虚拟时钟，使用调用者提供的单调经过时间，GUI 不把曲线降采样当作逐条原始数据投递；需要完整原始数据时使用键集分页或 CSV。`AudioPlayer` 提供跨平台实时音频输出（Linux PulseAudio / ALSA 动态加载与 Windows `winmm`），`encode_wav` 与 `compute_spectrum` 提供标准 WAV 编码与 Hann 窗 FFT 频谱计算。
 
@@ -138,7 +140,7 @@ python3 tools/validate_current.py --profiles release asan windows-cross \
   --report docs/evidence/current-validation.json --parallel 4
 python3 tools/package_linux.py --build-dir build --output dist-linux
 python3 tools/validate_package.py \
-  --package dist-linux/EdgeEcho-0.5.0-linux-x86_64 \
+  --package dist-linux/EdgeEcho-0.6.0-linux-x86_64 \
   --validation-report docs/evidence/current-validation.json
 ```
 

@@ -1,14 +1,15 @@
-#include "edgeecho/core.hpp"
+#include "archive_support.hpp"
+#include "signal_decode.hpp"
 
 #include <array>
 #include <cmath>
-#include <cstring>
-#include <limits>
 #include <sstream>
 #include <unordered_set>
 
 namespace edgeecho {
 namespace {
+namespace replay = detail::replay;
+
 struct Feature {
     const char *id;
     const char *label;
@@ -17,14 +18,16 @@ struct Feature {
     const char *description_zh;
 };
 
-// Public XYZS IIO scan order with official SSF-MEMS-XYZS scale factors.
-constexpr std::array<Feature, 29> features{{
+// Presentation order, labels and physical calibration for each sensor family.
+constexpr std::array<Feature, 6> xyzs_frequency{{
     {"x_high_freq_acc_rms", "X 高频加速度有效值 / X HF Acc RMS", 0.0980665, "m/s²", "X轴高频加速度有效值 (0.0980665 m/s²/count)"},
     {"x_low_freq_velocity_rms", "X 低频速度有效值 / X LF Vel RMS", 0.01, "mm/s", "X轴低频速度有效值 (0.01 mm/s/count)"},
     {"y_high_freq_acc_rms", "Y 高频加速度有效值 / Y HF Acc RMS", 0.0980665, "m/s²", "Y轴高频加速度有效值 (0.0980665 m/s²/count)"},
     {"y_low_freq_velocity_rms", "Y 低频速度有效值 / Y LF Vel RMS", 0.01, "mm/s", "Y轴低频速度有效值 (0.01 mm/s/count)"},
     {"z_high_freq_acc_rms", "Z 高频加速度有效值 / Z HF Acc RMS", 0.0980665, "m/s²", "Z轴高频加速度有效值 (0.0980665 m/s²/count)"},
     {"z_low_freq_velocity_rms", "Z 低频速度有效值 / Z LF Vel RMS", 0.01, "mm/s", "Z轴低频速度有效值 (0.01 mm/s/count)"},
+}};
+constexpr std::array<Feature, 16> common_features{{
     {"temperature", "温度 / Temperature", 0.01, "°C", "传感器温度 (0.01 °C/count = 10 m°C)"},
     {"x_acc_peak_to_peak", "X 加速度峰峰值 / X Acc Peak-to-Peak", 0.0980665, "m/s²", "X轴加速度峰峰值 (0.0980665 m/s²/count)"},
     {"y_acc_peak_to_peak", "Y 加速度峰峰值 / Y Acc Peak-to-Peak", 0.0980665, "m/s²", "Y轴加速度峰峰值 (0.0980665 m/s²/count)"},
@@ -41,6 +44,8 @@ constexpr std::array<Feature, 29> features{{
     {"x_velocity_rms", "X 速度有效值 / X Velocity RMS", 0.01, "mm/s", "X轴速度有效值 (0.01 mm/s/count)"},
     {"y_velocity_rms", "Y 速度有效值 / Y Velocity RMS", 0.01, "mm/s", "Y轴速度有效值 (0.01 mm/s/count)"},
     {"z_velocity_rms", "Z 速度有效值 / Z Velocity RMS", 0.01, "mm/s", "Z轴速度有效值 (0.01 mm/s/count)"},
+}};
+constexpr std::array<Feature, 7> xyzs_sound{{
     {"sound_rms_db", "声音有效值 / Sound RMS", 0.01, "dB", "声音有效值分贝 (0.01 dB/count)"},
     {"sound_peak_db", "声音峰值 / Sound Peak", 0.01, "dB", "声音峰值分贝 (0.01 dB/count)"},
     {"sound_peak_to_peak_db", "声音峰峰值 / Sound Peak-to-Peak", 0.01, "dB", "声音峰峰值分贝 (0.01 dB/count)"},
@@ -50,42 +55,46 @@ constexpr std::array<Feature, 29> features{{
     {"startup_flags", "XYZ 运行判定标志 / Startup Flags", 1.0, "mask", "XYZ三轴运行判定位掩码 (bit0/1/2 = X/Y/Z)"},
 }};
 
+constexpr std::array<Feature, 3> xyz_displacement{{
+    {"x_displacement_peak_to_peak", "X 位移峰峰值 / X Displacement Peak-to-Peak", 1e-6, "m", "X轴位移峰峰值 (1 μm/count)"},
+    {"y_displacement_peak_to_peak", "Y 位移峰峰值 / Y Displacement Peak-to-Peak", 1e-6, "m", "Y轴位移峰峰值 (1 μm/count)"},
+    {"z_displacement_peak_to_peak", "Z 位移峰峰值 / Z Displacement Peak-to-Peak", 1e-6, "m", "Z轴位移峰峰值 (1 μm/count)"},
+}};
+
+template<class Visit>
+void visit_features(const std::string &encoding, Visit visit) {
+    const auto visit_group = [&](const auto &group) {
+        for (const auto &feature : group) visit(feature);
+    };
+    if (encoding == "iio-le-72-v1") {
+        visit_group(xyzs_frequency);
+        visit_group(common_features);
+        visit_group(xyzs_sound);
+    } else if (encoding == "iio-le-48-v1") {
+        visit_group(common_features);
+        visit_group(xyz_displacement);
+    }
+}
+
 void check_cancel(const Cancel &cancel) {
     if (cancel && cancel->load(std::memory_order_relaxed))
         throw Error("query cancelled");
 }
 
-std::uint64_t little_unsigned(const std::uint8_t *bytes, std::size_t width) {
-    std::uint64_t value = 0;
-    for (std::size_t i = 0; i < width; ++i)
-        value |= static_cast<std::uint64_t>(bytes[i]) << (i * 8);
-    return value;
+bool compact_waveform(const std::string &encoding) noexcept {
+    return encoding == "s16le" || encoding == "s32le" || encoding == "f32le" || encoding == "f64le";
 }
 
-double signed_value(const std::uint8_t *bytes, std::size_t width) {
-    const auto value = little_unsigned(bytes, width);
-    const auto sign = std::uint64_t{1} << (width * 8 - 1);
-    if (value & sign)
-        return static_cast<double>(static_cast<std::int64_t>(value) -
-                                   static_cast<std::int64_t>(sign * 2));
-    return static_cast<double>(value);
-}
-
-double float_value(const std::uint8_t *bytes, std::size_t width) {
-    static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559,
-                  "f32le requires IEEE 754 binary32");
-    static_assert(sizeof(double) == 8 && std::numeric_limits<double>::is_iec559,
-                  "f64le requires IEEE 754 binary64");
-    if (width == 4) {
-        const auto bits = static_cast<std::uint32_t>(little_unsigned(bytes, width));
-        float value = 0;
-        std::memcpy(&value, &bits, sizeof(value));
-        return static_cast<double>(value);
+void emit_points(const replay::SignalView &signal, const std::string &channel,
+                 std::size_t first, std::size_t last, const std::function<void(Point)> &emit,
+                 const Cancel &cancel) {
+    const auto selected = signal.find_channel(channel);
+    if (!selected) throw Error("unknown channel: " + channel);
+    for (std::size_t sample = first; sample < last; ++sample) {
+        check_cancel(cancel);
+        const auto value = signal.value(sample, *selected);
+        emit({signal.timestamp(sample), value.value_or(0), !value});
     }
-    const auto bits = little_unsigned(bytes, width);
-    double value = 0;
-    std::memcpy(&value, &bits, sizeof(value));
-    return value;
 }
 
 void validate_utf8(const std::string &text) {
@@ -122,28 +131,27 @@ std::vector<Channel> channels(const std::string &encoding, int kind) {
         return {{"x", "X (raw)"}, {"y", "Y (raw)"}, {"z", "Z (raw)"}};
     if (encoding == "iio-le-16-v1")
         return {{"sound", "Sound PCM (raw)"}};
-    if (encoding == "iio-le-72-v1") {
-        std::vector<Channel> result;
-        result.reserve(features.size());
-        for (const auto &feature : features)
-            result.push_back({feature.id, feature.label});
-        return result;
-    }
-    if (encoding == "s16le" || encoding == "s32le" || encoding == "f32le" ||
-        encoding == "f64le")
+    if (compact_waveform(encoding))
         return {{"value", "Value"}};
-    return {};
+    std::vector<Channel> result;
+    visit_features(encoding, [&](const Feature &feature) {
+        result.push_back({feature.id, feature.label});
+    });
+    return result;
+}
+
+bool is_waveform_encoding(const std::string &encoding) noexcept {
+    return encoding == "iio-le-24-v1" || encoding == "iio-le-16-v1" || compact_waveform(encoding);
 }
 
 ChannelCalibration default_calibration(const std::string &encoding, const std::string &channel) {
-    if (encoding == "iio-le-72-v1") {
-        for (const auto &feature : features) {
-            if (channel == feature.id) {
-                return {feature.scale, 0.0, feature.physical_unit,
-                        feature.description_zh, true};
-            }
-        }
-    }
+    std::optional<ChannelCalibration> calibration;
+    visit_features(encoding, [&](const Feature &feature) {
+        if (feature.id == channel)
+            calibration = ChannelCalibration{feature.scale, 0.0, feature.physical_unit,
+                                             feature.description_zh, true};
+    });
+    if (calibration) return *calibration;
     if (encoding == "iio-le-24-v1" &&
         (channel == "x" || channel == "y" || channel == "z" || channel == "xyz")) {
         // Standard ±16g 16-bit MEMS accelerometer sensitivity: 16 * 9.80665 / 32768 m/s²/count
@@ -167,77 +175,43 @@ double apply_calibration(double raw_value, const ChannelCalibration &cal) noexce
     return raw_value * cal.scale + cal.offset;
 }
 
+void detail::decode_window(const replay::SignalView &signal, const std::string &channel, Range range,
+                           const std::function<void(Point)> &emit, const Cancel &cancel) {
+    const auto [first, last] = signal.sample_range({range.start, range.end});
+    emit_points(signal, channel, first, last, emit, cancel);
+}
+
 void decode(const Record &record, const std::string &channel,
             const std::function<void(Point)> &emit, const Cancel &cancel) {
     check_cancel(cancel);
-    if (!emit)
-        throw Error("decode requires an output callback");
-    if (record.timestamp < 0 || record.timestamp >= max_time || record.duration < 0 ||
-        record.duration > max_time - record.timestamp)
-        throw Error("record timestamp/duration is out of range");
-    const auto available = channels(record.encoding, record.kind);
-    std::size_t selected = 0;
-    while (selected < available.size() && available[selected].id != channel)
-        ++selected;
-    if (selected == available.size())
-        throw Error(available.empty() ? "unsupported record encoding/kind: " + record.encoding
-                                      : "unknown channel: " + channel);
+    if (!emit) throw Error("decode requires an output callback");
 
-    if (record.kind == 0) {
-        emit({record.timestamp, 0, true});
-        return;
+    // Raw detail decodes stored values even when history views mask their quality.
+    replay::Record raw;
+    raw.id = record.id;
+    raw.timestamp = record.timestamp;
+    raw.duration_us = record.duration;
+    raw.sample_rate_hz = record.rate;
+    raw.encoding = record.encoding;
+    switch (record.kind) {
+        case 0:
+            raw.quality = replay::missing;
+            break;
+        case 1:
+            if (!record.scalar) throw Error("scalar record has no value");
+            raw.value = *record.scalar;
+            break;
+        case 2:
+            raw.value = record.block;
+            break;
+        default:
+            throw Error("unsupported record kind");
     }
-    if (record.kind == 1) {
-        if (!record.scalar)
-            throw Error("scalar record has no value");
-        const auto value = *record.scalar;
-        emit({record.timestamp, std::isfinite(value) ? value : 0, !std::isfinite(value)});
-        return;
-    }
-
-    const bool feature_scan = record.encoding == "iio-le-72-v1";
-    const bool float_samples = record.encoding == "f32le" || record.encoding == "f64le";
-    std::size_t stride = 0, offset = 0, width = 0;
-    if (record.encoding == "iio-le-24-v1") {
-        stride = 24; offset = selected * 2; width = 2;
-    } else if (record.encoding == "iio-le-16-v1") {
-        stride = 16; width = 4;
-    } else if (feature_scan) {
-        stride = 72; offset = selected * 2; width = selected == 28 ? 1 : 2;
-    } else {
-        width = record.encoding == "s16le" ? 2 : record.encoding == "f64le" ? 8 : 4;
-        stride = width;
-    }
-    if (record.block.empty() || record.block.size() % stride != 0)
-        throw Error("empty or truncated block for encoding: " + record.encoding);
-    if (record.duration <= 0)
-        throw Error("block requires a positive duration");
-    const auto count = record.block.size() / stride;
-    long double period = 0;
-    if (!feature_scan) {
-        if (!record.rate || !std::isfinite(*record.rate) || *record.rate <= 0)
-            throw Error("waveform requires a finite positive sample rate");
-        period = 1000000.0L / static_cast<long double>(*record.rate);
-        const auto last_offset = std::floor(static_cast<long double>(count - 1) * period);
-        if (!std::isfinite(last_offset) || last_offset < 0 ||
-            last_offset >= static_cast<long double>(record.duration))
-            throw Error("waveform sample timestamps exceed its half-open duration");
-    }
-    for (std::size_t i = 0; i < count; ++i) {
-        check_cancel(cancel);
-        const auto *bytes = record.block.data() + i * stride + offset;
-        double value = 0;
-        if (feature_scan && selected != 6)
-            value = static_cast<double>(little_unsigned(bytes, width));
-        else if (float_samples)
-            value = float_value(bytes, width);
-        else
-            value = signed_value(bytes, width);
-        // Preflight bounds above ensure the cast and addition cannot overflow.
-        // Feature values share the record anchor; they have no uniform rate.
-        const Time timestamp = feature_scan ? record.timestamp : record.timestamp +
-            static_cast<Time>(std::floor(static_cast<long double>(i) * period));
-        emit({timestamp, std::isfinite(value) ? value : 0, !std::isfinite(value)});
+    try {
+        const replay::SignalView signal(raw);
+        emit_points(signal, channel, 0, signal.sample_count(), emit, cancel);
+    } catch (const replay::Error &error) {
+        detail::throw_replay_error(error);
     }
 }
 

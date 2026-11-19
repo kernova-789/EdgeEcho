@@ -1060,8 +1060,12 @@ class MainWindow final : public QMainWindow {
             channelBox_->addItem(QStringLiteral("XYZ 同屏"), QStringLiteral("xyz"));
         if (available.empty() && series.kind == -1) {
             channelBox_->addItem(QStringLiteral("混合载荷：value（不兼容记录将报错）"), QStringLiteral("value"));
-            for (const auto &encoding : {"iio-le-24-v1", "iio-le-16-v1", "iio-le-72-v1"})
-                for (const auto &channel : channels(encoding)) channelBox_->addItem(qs(channel.label), qs(channel.id));
+            for (const auto &encoding : {"iio-le-24-v1", "iio-le-16-v1", "iio-le-72-v1", "iio-le-48-v1"}) {
+                for (const auto &channel : channels(encoding)) {
+                    if (channelBox_->findData(qs(channel.id)) < 0)
+                        channelBox_->addItem(qs(channel.label), qs(channel.id));
+                }
+            }
         } else for (const auto &channel : available) channelBox_->addItem(qs(channel.label), qs(channel.id));
         if (channelBox_->count() == 0) channelBox_->addItem(QStringLiteral("未知编码 · 查看原始记录"), QString());
         updatingChannels_ = false;
@@ -1285,8 +1289,8 @@ class MainWindow final : public QMainWindow {
             }
         } else {
             audioPlayer_.clear();
-            const bool canExportWave = !ids.empty() && overview_.series[static_cast<std::size_t>(selected_)].kind == 2 &&
-                                       overview_.series[static_cast<std::size_t>(selected_)].encoding != "iio-le-72-v1";
+            const auto &series = overview_.series[static_cast<std::size_t>(selected_)];
+            const bool canExportWave = !ids.empty() && series.kind == 2 && is_waveform_encoding(series.encoding);
             playAudioNow_->setEnabled(false);
             exportWavAction_->setEnabled(canExportWave);
             audioStatusLabel_->setText(QStringLiteral("非声音通道"));
@@ -1324,7 +1328,7 @@ class MainWindow final : public QMainWindow {
         if (pendingProbe_ && !ids.empty()) {
             const Time target = *pendingProbe_; pendingProbe_.reset(); const auto serial = probeSerial_;
             const auto &series = overview_.series[static_cast<std::size_t>(selected_)];
-            const bool estimated = series.kind == 2 && series.encoding != "iio-le-72-v1";
+            const bool estimated = series.kind == 2 && is_waveform_encoding(series.encoding);
             const bool wantPhysical = unitModeBox_ && unitModeBox_->currentData().toString() == QStringLiteral("physical");
             const std::string encoding = series.encoding;
             startBackground(QStringLiteral("精确原始读数"), [input, expected, f, range, ids, target, estimated, wantPhysical, encoding](Cancel cancel) {

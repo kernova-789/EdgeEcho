@@ -17,10 +17,6 @@ class AtomicOutput {
     AtomicOutput(const AtomicOutput &) = delete;
     AtomicOutput &operator=(const AtomicOutput &) = delete;
     void write(std::string_view);
-    // For a writer such as SQLite that must open its own path. Releases our
-    // empty-file handle; publish reopens and synchronizes it after that writer
-    // has closed. The reserved private filename remains exclusively ours.
-    const std::filesystem::path &prepare_external_write();
     void publish();
     std::uint64_t bytes_written() const noexcept;
     const std::filesystem::path &temporary_path() const noexcept;

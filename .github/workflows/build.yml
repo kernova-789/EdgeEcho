@@ -1,5 +1,12 @@
 name: Build, test and package
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches-ignore:
+      - 'release-package/**'
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
 jobs:
   desktop:
     strategy:
@@ -13,6 +20,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check out the Replay 1.2 dependency
+        uses: actions/checkout@v4
+        with:
+          repository: kernova-789/EdgeSense_Replay
+          ref: 3ddfc7cc070e80d9cab59d4add035eae16f04666
+          path: .deps/replay
+          token: ${{ secrets.REPLAY_CHECKOUT_TOKEN || github.token }}
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
@@ -22,18 +36,19 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y patchelf libxcb-cursor0 libxkbcommon-x11-0
       - name: Validate current desktop sources with fresh test evidence
-        run: python tools/validate_current.py --profiles release --report build/current-validation.json
+        run: python tools/validate_current.py --profiles release --report build/current-validation.json --cmake-arg=-DREPLAY_SOURCE_DIR=.deps/replay
       - name: Package Linux runtime
         if: runner.os == 'Linux'
         run: |
           python3 tools/package_linux.py --build-dir build --output dist
-          python3 tools/validate_package.py --package dist/EdgeEcho-0.5.0-linux-x86_64 --output build/package-validation --validation-report build/current-validation.json
+          python3 tools/validate_package.py --package dist/EdgeEcho-*-linux-x86_64 --output build/package-validation --validation-report build/current-validation.json
       - name: Package Windows runtime
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           ./tools/package_windows.ps1 -BuildDir build -Output dist
-          python tools/validate_package.py --package dist/EdgeEcho-0.5.0-windows-x86_64 --output build/package-validation --validation-report build/current-validation.json
+          $package = Get-ChildItem -Path dist -Directory -Filter 'EdgeEcho-*-windows-x86_64'
+          python tools/validate_package.py --package $package.FullName --output build/package-validation --validation-report build/current-validation.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -55,8 +70,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check out the Replay 1.2 dependency
+        uses: actions/checkout@v4
+        with:
+          repository: kernova-789/EdgeSense_Replay
+          ref: 3ddfc7cc070e80d9cab59d4add035eae16f04666
+          path: .deps/replay
+          token: ${{ secrets.REPLAY_CHECKOUT_TOKEN || github.token }}
       - name: Validate instrumented core with fresh evidence
-        run: python3 tools/validate_current.py --profiles asan --report build-asan/current-validation.json
+        run: python3 tools/validate_current.py --profiles asan --report build-asan/current-validation.json --cmake-arg=-DREPLAY_SOURCE_DIR=.deps/replay
       - uses: actions/upload-artifact@v4
         if: always()
         with:

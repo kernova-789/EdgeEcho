@@ -15,7 +15,7 @@ INPUTS = {
 
 
 def fingerprints(root: Path) -> dict[str, str]:
-    files = {root/'CMakeLists.txt', root/'third_party/sqlite/sqlite3.c', root/'third_party/sqlite/sqlite3.h'}
+    files = {root/'CMakeLists.txt', root/'third_party/sqlite/sqlite3.h'}
     for folder, patterns in INPUTS.items():
         for pattern in patterns:
             files.update((root/folder).rglob(pattern))

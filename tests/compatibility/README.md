@@ -1,23 +1,21 @@
-# Original writer integration
+# Replay writer interoperability
 
-Run after the normal EdgeEcho Release build (native Linux):
+Run from the EdgeEcho project directory on Linux.
 
 ```bash
 python3 tests/compatibility/validate.py \
   --storage-source '/home/u-yoimiya/文档/EdgeSense Replay'
 ```
 
-The reference writer source is read only. Its CMake build, bridge binary, fixture,
-logs and result all reside in EdgeEcho/build-compat. Before/after SHA256 values
-verify the reference CMake/source/header/SQLite files did not change. Existing
-uncommitted changes in the reference checkout are preserved.
+EdgeEcho and the fixture writer link the same Replay Core build. CMake outputs,
+the fixture, logs and result stay under `build-compat`. The runner checks the
+Replay checkout's source hashes before and after the build.
 
-The bridge writes 3000 scalar records, including UTF-8 metadata, and a diagnostic
-through the actual Store API, closes it normally, then reads them using EdgeEcho.
-It checks all identifiers, timestamps, scalar presence, metadata entry count,
-keyset pagination, latest event and min/max plot counts. A fresh CLI process
-also inspects the file and verifies source hash and sidecar absence.
+The fixture writes 5,000 scalar records with UTF-8 metadata, a 48-byte XYZ feature
+scan, an overlapping waveform and a confirmed diagnostic through Replay's
+public Store API. It checks raw record pagination and metadata, the latest event
+revision and confirmation, XYZ feature channels, and the half-open window for
+the waveform plot and probe. A fresh CLI process inspects the database, after
+which the runner checks the source hash and sidecar absence.
 
-These are simulated records written through the real storage implementation,
-not physical-sensor acquisition or a Windows runtime acceptance test. The regular
-EdgeEcho build/tests have no dependency on the reference source or this bridge.
+This run exercises simulated records on the native Linux build.

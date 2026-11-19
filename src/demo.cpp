@@ -1,94 +1,172 @@
-#include "edgeecho/core.hpp"
-#include "demo_schema.hpp"
-#include "sqlite3.h"
 #include "atomic_output.hpp"
+#include "archive_support.hpp"
+#include <edgesense_replay/store.hpp>
 
+#include <array>
 #include <cmath>
-#include <cstring>
-#include <system_error>
+#include <fstream>
 
 namespace edgeecho {
 namespace {
-void check(int rc, sqlite3 *db) {
-    if (rc != SQLITE_OK && rc != SQLITE_DONE) throw Error(std::string("Demo SQLite: ") + sqlite3_errmsg(db));
+namespace replay = detail::replay;
+constexpr Time anchor = 1793145600000000LL; // 2026-10-28 00:00:00 UTC
+constexpr double tau = 6.283185307179586;
+
+class DemoWorkspace {
+  public:
+    explicit DemoWorkspace(std::filesystem::path path) : path_(std::move(path)) {
+        path_ += ".replay";
+        std::error_code error;
+        if (!std::filesystem::create_directory(path_, error))
+            throw Error("Cannot create demo workspace: " + (error ? error.message() : "already exists"));
+    }
+
+    ~DemoWorkspace() {
+        std::error_code ignored;
+        std::filesystem::remove_all(path_, ignored);
+    }
+
+    const std::filesystem::path &path() const noexcept { return path_; }
+
+  private:
+    std::filesystem::path path_;
+};
+
+void put(replay::Bytes &block, std::size_t offset, std::uint64_t value, unsigned width) {
+    for (unsigned byte = 0; byte < width; ++byte)
+        block.at(offset + byte) = static_cast<std::uint8_t>((value >> (byte * 8)) & 255U);
 }
-void put(std::vector<std::uint8_t> &b, std::size_t pos, std::uint64_t value, unsigned count) {
-    for (unsigned j = 0; j < count; ++j) b.at(pos+j) = static_cast<std::uint8_t>((value >> (j*8)) & 255U);
+
+replay::Record demo_record(std::string id, const char *sensor, const char *type, Time timestamp) {
+    replay::Record record;
+    record.id = std::move(id);
+    record.sensor_id = sensor;
+    record.data_type = type;
+    record.unit = "count";
+    record.timestamp = timestamp;
+    record.source = "EdgeEcho demo (synthetic)";
+    record.batch_id = "demo";
+    record.metadata.emplace("input_origin", "simulated");
+    return record;
 }
-}
-void create_demo(const std::filesystem::path &target, std::size_t count) {
-    if (count == 0 || count > 10000000) throw Error("Demo record count must be in 1..10000000");
-    detail::AtomicOutput output(std::filesystem::weakly_canonical(std::filesystem::absolute(target)));
-    const auto private_path = output.prepare_external_write();
-    sqlite3 *db = nullptr;
-    sqlite3_stmt *stmt = nullptr;
-    try {
-        const auto bytes = private_path.u8string();
-        check(sqlite3_open_v2(bytes.c_str(), &db, SQLITE_OPEN_READWRITE, nullptr), db);
-        check(sqlite3_exec(db, demo_schema, nullptr, nullptr, nullptr), db);
-        check(sqlite3_exec(db, "UPDATE meta SET value=lower(hex(randomblob(16))) WHERE key='database_id';", nullptr, nullptr, nullptr), db);
-        check(sqlite3_exec(db, "BEGIN;", nullptr, nullptr, nullptr), db);
-        const char *sql = "INSERT INTO records(id,sensor,type,unit,ts,kind,scalar,block,quality,duration,rate,encoding,source,batch,metadata,version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'demo','12:input_origin9:simulated',1)";
-        check(sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr), db);
-        auto text = [&](int n, const std::string &v) { check(sqlite3_bind_text(stmt,n,v.c_str(),static_cast<int>(v.size()),SQLITE_TRANSIENT),db); };
-        auto integer = [&](int n, Time v) { check(sqlite3_bind_int64(stmt,n,v),db); };
-        constexpr Time anchor = 1793145600000000LL; // 2026-10-28 00:00:00 UTC.
-        for (std::size_t n = 0; n < count; ++n) {
-            sqlite3_reset(stmt); sqlite3_clear_bindings(stmt);
-            text(1, "scalar-"+std::to_string(n)); text(2,"demo-vibration"); text(3,"acceleration_rms"); text(4,"count");
-            integer(5, anchor + static_cast<Time>(n) * 10000); integer(6,1);
-            check(sqlite3_bind_double(stmt,7,10+std::sin(static_cast<double>(n)*0.035)*4+(n%997==0?30:0)),db);
-            integer(9,n%503==502?4:0); integer(10,0); text(12,""); text(13,"EdgeEcho demo (synthetic)"); check(sqlite3_step(stmt),db);
+
+void write_scalars(replay::Store &store, std::size_t count) {
+    constexpr std::size_t batch_size = 1024;
+    std::vector<replay::Record> batch;
+    batch.reserve(batch_size);
+    for (std::size_t n = 0; n < count; ++n) {
+        auto record = demo_record("scalar-" + std::to_string(n), "demo-vibration", "acceleration_rms",
+                                  anchor + static_cast<Time>(n) * 10000);
+        record.value = 10 + std::sin(static_cast<double>(n) * 0.035) * 4 + (n % 997 == 0 ? 30 : 0);
+        if (n % 503 == 502) record.quality = replay::uncertain_time;
+        batch.push_back(std::move(record));
+        if (batch.size() == batch_size || n + 1 == count) {
+            store.append(batch);
+            batch.clear();
         }
-        // 20 seconds each of representative raw IIO vibration, sound, feature.
-        for (int kind = 0; kind < 3; ++kind) {
-            const std::size_t scans = kind==2 ? 1 : 1000;
-            const std::size_t stride = kind==0 ? 24 : kind==1 ? 16 : 72;
-            for (int batch = 0; batch < 20; ++batch) {
-                std::vector<std::uint8_t> block(scans*stride,0);
-                for (std::size_t s = 0; s < scans; ++s) {
-                    const auto t = static_cast<double>(batch) + static_cast<double>(s)/1000;
-                    if (kind==0) {
-                        for (int axis=0;axis<3;++axis) {
-                            const auto value = static_cast<std::int16_t>(10000*std::sin(t*6.283185307179586*(5+axis)));
-                            put(block,s*stride+static_cast<std::size_t>(axis)*2,static_cast<std::uint16_t>(value),2);
-                        }
-                        put(block,s*stride+8,static_cast<unsigned>(batch),4); put(block,s*stride+12,s,2);
-                        put(block,s*stride+16,static_cast<std::uint64_t>(anchor + batch*1000000LL + static_cast<Time>(s)*1000)*1000,8);
-                    } else if (kind==1) {
-                        auto value = static_cast<std::int32_t>(1000000*std::sin(t*6.283185307179586*80));
-                        put(block,s*stride,static_cast<std::uint32_t>(value),4);
-                        put(block,s*stride+4,static_cast<unsigned>(batch),2); put(block,s*stride+6,s,2);
-                        put(block,s*stride+8,static_cast<std::uint64_t>(anchor + batch*1000000LL + static_cast<Time>(s)*1000)*1000,8);
-                    } else {
-                        for (unsigned c=0;c<28;++c) put(block,c*2,100+c*20+static_cast<unsigned>(batch),2);
-                        put(block,12,static_cast<std::uint16_t>(2500+batch),2); put(block,56,3,1);
-                        put(block,64,static_cast<std::uint64_t>(anchor + batch*1000000LL)*1000,8);
+    }
+}
+
+enum class Stream { vibration, sound, feature };
+
+void write_stream(replay::Store &store, Stream stream, const char *sensor, const char *type,
+                  const char *encoding, std::size_t stride) {
+    const bool feature = stream == Stream::feature;
+    const auto samples = feature ? 1U : 1000U;
+    std::vector<replay::Record> blocks;
+    for (int batch = 0; batch < 20; ++batch) {
+        const auto timestamp = anchor + batch * replay::second;
+        auto record = demo_record("block-" + std::to_string(static_cast<int>(stream)) + "-" +
+                                  std::to_string(batch), sensor, type, timestamp);
+        record.encoding = encoding;
+        record.duration_us = feature ? 1 : replay::second;
+        if (!feature) record.sample_rate_hz = 1000;
+        replay::Bytes block(samples * stride, 0);
+        for (std::size_t sample = 0; sample < samples; ++sample) {
+            const auto time = static_cast<double>(batch) + static_cast<double>(sample) / 1000;
+            const auto offset = sample * stride;
+            const auto nanoseconds = static_cast<std::uint64_t>(timestamp +
+                static_cast<Time>(sample) * 1000) * 1000;
+            switch (stream) {
+                case Stream::vibration:
+                    for (std::size_t axis = 0; axis < 3; ++axis) {
+                        const auto value = static_cast<std::int16_t>(
+                            10000 * std::sin(time * tau * static_cast<double>(5 + axis)));
+                        put(block, offset + axis * 2, static_cast<std::uint16_t>(value), 2);
                     }
+                    put(block, offset + 8, sample / 64, 4);
+                    put(block, offset + 12, sample % 64, 2);
+                    put(block, offset + 16, nanoseconds, 8);
+                    break;
+                case Stream::sound: {
+                    const auto value = static_cast<std::int32_t>(1000000 * std::sin(time * tau * 80));
+                    put(block, offset, static_cast<std::uint32_t>(value), 4);
+                    put(block, offset + 4, sample / 64, 2);
+                    put(block, offset + 6, sample % 64, 2);
+                    put(block, offset + 8, nanoseconds, 8);
+                    break;
                 }
-                sqlite3_reset(stmt); sqlite3_clear_bindings(stmt);
-                text(1,"block-"+std::to_string(kind)+"-"+std::to_string(batch));
-                text(2,kind==1?"demo-sound":"demo-vibration");
-                text(3,kind==0?"vibration_iio_block":kind==1?"raw_sound_iio":"feature_iio_scan"); text(4,"count");
-                integer(5,anchor+batch*1000000LL); integer(6,2);
-                check(sqlite3_bind_blob(stmt,8,block.data(),static_cast<int>(block.size()),SQLITE_TRANSIENT),db);
-                integer(9,0); integer(10,kind==2?1:1000000);
-                if (kind!=2) check(sqlite3_bind_double(stmt,11,1000),db);
-                text(12,kind==0?"iio-le-24-v1":kind==1?"iio-le-16-v1":"iio-le-72-v1"); text(13,"EdgeEcho demo (synthetic)"); check(sqlite3_step(stmt),db);
+                case Stream::feature:
+                    for (unsigned channel = 0; channel < 28; ++channel)
+                        put(block, channel * 2, 100 + channel * 20 + static_cast<unsigned>(batch), 2);
+                    put(block, 12, static_cast<unsigned>(2500 + batch), 2);
+                    put(block, 56, 3, 1);
+                    put(block, 64, nanoseconds, 8);
+                    break;
             }
         }
-        sqlite3_finalize(stmt); stmt = nullptr;
-        check(sqlite3_exec(db,
-            "INSERT INTO events(id,sensor,type,start,end,assessment,severity,event_type,description,source,model,version) VALUES('demo-event','demo-vibration','',1793145603000000,1793145607000000,2,1,'demo_warning','Synthetic event for replay demonstration','EdgeEcho','demo',1);"
-            "INSERT INTO event_history(id,sensor,type,start,end,assessment,severity,event_type,description,source,model,version,revision,previous_revision,action,operation_id,operated_at,actor,reason,revoked,confirmed,confirmed_by,note,request) SELECT id,sensor,type,start,end,assessment,severity,event_type,description,source,model,version,1,0,0,'demo-create',start,'demo','synthetic',0,0,'','','' FROM events;"
-            "UPDATE aggregate_state SET backfill_end=(SELECT coalesce(max(seq),0) FROM records),backfill_cursor=0;"
-            "COMMIT;",nullptr,nullptr,nullptr),db);
-        check(sqlite3_close(db),db); db = nullptr;
-        output.publish();
-    } catch (...) {
-        if (stmt) sqlite3_finalize(stmt);
-        if (db) sqlite3_close(db);
-        throw;
+        record.value = std::move(block);
+        blocks.push_back(std::move(record));
     }
+    store.append(blocks);
+}
+
+void write_demo(const std::filesystem::path &directory, std::size_t count) {
+    replay::Config config;
+    config.directory = directory;
+    config.max_database_bytes = 1ULL << 40;
+    replay::Store store(config);
+    write_scalars(store, count);
+    write_stream(store, Stream::vibration, "demo-vibration", "vibration_iio_block", "iio-le-24-v1", 24);
+    write_stream(store, Stream::sound, "demo-sound", "raw_sound_iio", "iio-le-16-v1", 16);
+    write_stream(store, Stream::feature, "demo-vibration", "feature_iio_scan", "iio-le-72-v1", 72);
+
+    replay::Event event;
+    event.id = "demo-event";
+    event.sensor_id = "demo-vibration";
+    event.start = anchor + 3 * replay::second;
+    event.end = anchor + 7 * replay::second;
+    event.assessment = replay::Assessment::warning;
+    event.severity = replay::Severity::warning;
+    event.event_type = "demo_warning";
+    event.description = "Synthetic event for replay demonstration";
+    event.source = "EdgeEcho";
+    event.model_version = "demo";
+    store.create_event(event, {"demo-create", event.start, "demo", "synthetic"});
+}
+} // namespace
+
+void create_demo(const std::filesystem::path &target, std::size_t count) {
+    detail::require(count > 0 && count <= 10000000, "Demo record count must be in 1..10000000");
+    detail::AtomicOutput output(std::filesystem::weakly_canonical(std::filesystem::absolute(target)));
+    const DemoWorkspace workspace(output.temporary_path());
+    const auto database = workspace.path() / "replay.db";
+    try {
+        write_demo(workspace.path(), count);
+        // All writer connections have closed. Only publish a standalone, validated database.
+        replay::Store::open_offline(database);
+    } catch (const replay::Error &error) {
+        detail::throw_replay_error(error);
+    }
+
+    std::ifstream input(database, std::ios::binary);
+    detail::require(static_cast<bool>(input), "Cannot read generated demo database");
+    std::array<char, 64 * 1024> buffer{};
+    do {
+        input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        output.write(std::string_view(buffer.data(), static_cast<std::size_t>(input.gcount())));
+    } while (input);
+    detail::require(input.eof() && !input.bad(), "Cannot read generated demo database");
+    output.publish();
 }
 } // namespace edgeecho

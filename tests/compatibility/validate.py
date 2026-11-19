@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Build an unmodified reference writer with all outputs confined to EdgeEcho.
-
-Linux native integration check, separate from the standalone portable build.
-"""
+"""Verify EdgeEcho against a database created by the selected Replay library."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import subprocess
+import tempfile
 
 project = Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser(__doc__)
@@ -30,16 +28,16 @@ def run(command, name):
     if r.returncode:
         raise RuntimeError(r.stdout)
 before = fingerprints()
-run(['cmake','-S',source,'-B',out,'-DCMAKE_BUILD_TYPE=Release','-DREPLAY_BUILD_TOOLS=OFF','-DREPLAY_BUILD_EXAMPLES=OFF','-DBUILD_TESTING=OFF'], 'configure')
-run(['cmake','--build',out,'--parallel','2'], 'build-writer')
-run(['cmake','--build',project/'build','--target','edgeecho_core','edgeecho_cli','--parallel','2'], 'build-reader')
-exe = out/'generate'
-run(['c++','-std=c++17','-I',source/'include','-I',project/'include',project/'tests/compatibility/generate.cpp',out/'libedgesense_replay.a',project/'build/libedgeecho_core.a',project/'build/libedgeecho_sqlite.a','-lpthread','-ldl','-lm','-o',exe], 'compile-bridge')
-# Stable IDs make this bridge safe to repeat against its own fixture.
-run([exe,out/'writer-data'], 'verify')
-db = out/'writer-data/replay.db'
+build = out/'build'
+run(['cmake', '-S', project, '-B', build, '-DCMAKE_BUILD_TYPE=Release',
+     '-DEDGEECHO_BUILD_GUI=OFF', '-DBUILD_TESTING=ON', f'-DREPLAY_SOURCE_DIR={source}'], 'configure')
+run(['cmake', '--build', build, '--target', 'replay_compatibility', 'edgeecho_cli',
+     '--parallel', '2'], 'build')
+fixture = Path(tempfile.mkdtemp(prefix='writer-data-', dir=out))
+run([build/'replay_compatibility', fixture], 'verify')
+db = fixture/'replay.db'
 digest = hashlib.sha256(db.read_bytes()).hexdigest()
-run([project/'build/edgeecho_cli','inspect',out/'writer-data'],'inspect')
+run([build/'edgeecho_cli', 'inspect', fixture], 'inspect')
 if digest != hashlib.sha256(db.read_bytes()).hexdigest():
     raise RuntimeError('Reader changed source database')
 if any((db.parent/(db.name+tail)).exists() for tail in ('-wal','-shm','-journal')):
@@ -47,7 +45,7 @@ if any((db.parent/(db.name+tail)).exists() for tail in ('-wal','-shm','-journal'
 if before != fingerprints():
     raise RuntimeError('Reference source changed')
 result = dict(passed=True, storage_source=str(source), reference_source_files_unchanged=len(before),
-              writer_generated_records=3000, writer_generated_events=1,
+              writer_generated_records=5002, writer_generated_events=1,
               payload_metadata_pagination_plot_verified=True, source_database_sha256=digest,
               no_sidecars=True)
 (out/'result.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')

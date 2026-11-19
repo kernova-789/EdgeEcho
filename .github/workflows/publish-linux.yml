@@ -1,0 +1,42 @@
+name: Publish verified Linux package
+on:
+  push:
+    branches:
+      - 'release-package/v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify the bundle and identify its source commit
+        id: bundle
+        shell: bash
+        env:
+          STAGING_BRANCH: ${{ github.ref_name }}
+        run: |
+          tag=${STAGING_BRANCH#release-package/}
+          [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          archive=EdgeEcho-${tag#v}-linux-x86_64.tar.gz
+          source_commit=$(git rev-parse HEAD^)
+          git diff --quiet "$source_commit" HEAD -- . ':(exclude).release'
+          test "$(cat .release/SOURCE_COMMIT)" = "$source_commit"
+          test -f "docs/releases/$tag.md"
+          test -f ".release/$archive"
+          (cd .release && sha256sum --check "$archive.sha256")
+          printf 'tag=%s\narchive=%s\ncommit=%s\n' "$tag" "$archive" "$source_commit" >> "$GITHUB_OUTPUT"
+      - name: Publish the Linux archive and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.bundle.outputs.tag }}
+          ARCHIVE: ${{ steps.bundle.outputs.archive }}
+          SOURCE_COMMIT: ${{ steps.bundle.outputs.commit }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_COMMIT" \
+            --title "EdgeEcho $TAG · Linux 发行版" --notes-file "docs/releases/$TAG.md" \
+            ".release/$ARCHIVE" ".release/$ARCHIVE.sha256"
